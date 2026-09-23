@@ -4,8 +4,7 @@ import yt_dlp
 
 def download(url, out_dir, progress_callback=None):
     """
-    progress_callback(percent: int | None, text: str) — вызывается из потока yt-dlp.
-    percent: 0..100 или None, если неизвестно.
+    progress_callback(percent: int | None, text: str) — из потока yt-dlp.
     """
     Path(out_dir).mkdir(parents=True, exist_ok=True)
     cookies = Path("credentials/cookies.txt")
@@ -36,11 +35,18 @@ def download(url, out_dir, progress_callback=None):
         "progress_hooks": [hook],
         "extractor_args": {"youtube": {"player_client": ["android", "web"]}},
     }
-    if cookies.exists():
+    if cookies.exists() and cookies.stat().st_size > 0:
         opts["cookiefile"] = str(cookies)
 
     with yt_dlp.YoutubeDL(opts) as ydl:
         info = ydl.extract_info(url, download=True)
         path = Path(ydl.prepare_filename(info))
         mp4 = path.with_suffix(".mp4")
-        return mp4 if mp4.exists() else path
+        if mp4.exists():
+            return mp4
+        # fallback: любой скачанный файл с этим id
+        stem = path.stem
+        for p in Path(out_dir).glob(stem + ".*"):
+            if p.suffix.lower() in {".mp4", ".mkv", ".webm", ".mov"}:
+                return p
+        return path

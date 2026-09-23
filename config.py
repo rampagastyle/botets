@@ -13,5 +13,6 @@ USERS_FILE = WORK_DIR / "users.txt"
 SETTINGS_FILE = WORK_DIR / "settings.txt"
 ACCOUNTS_FILE = WORK_DIR / "accounts.txt"
 
+
 def is_allowed(user_id: int) -> bool:
     return not WHITELIST or str(user_id) in WHITELIST

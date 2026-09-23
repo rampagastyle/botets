@@ -1,15 +1,22 @@
 import asyncio
 import time
+from pathlib import Path
+
 from aiogram import Router
 from aiogram.types import Message, FSInputFile
+
 from config import WORK_DIR, MAX_FILE_SIZE, is_allowed
 from services.storage import get_settings
 from services.downloader import download
-from services.processor import process, split_video
-from pathlib import Path
+from services.processor import to_vertical, insert_banner_center, split_video
 
 router = Router()
 MAX_SEND_BYTES = 45 * 1024 * 1024
+
+
+def _bar(percent: int, width: int = 10) -> str:
+    filled = max(0, min(width, round(percent * width / 100)))
+    return "█" * filled + "░" * (width - filled)
 
 
 @router.message(lambda m: m.text and m.text.startswith(("http://", "https://")))
@@ -27,7 +34,6 @@ async def video_link(message: Message):
     last_edit = {"t": 0.0}
 
     def progress_callback(percent, text):
-        # не чаще раза в 2 сек, чтобы Telegram не резал flood
         now = time.time()
         if now - last_edit["t"] < 2 and percent not in (0, 100):
             return
@@ -54,52 +60,68 @@ async def video_link(message: Message):
         if src.stat().st_size > MAX_FILE_SIZE:
             return await status.edit_text("Файл превышает установленный лимит.")
 
-        await status.edit_text(
-            f"Скачано: {size_mb:.1f} МБ\n"
-            f"Начинаю обработку 9:16 (это может занять несколько минут)…"
-        )
-
         s = get_settings(message.from_user.id)
-        out = processed / f"{src.stem}_vertical.mp4"
+        clip_sec = int(s.get("clip_seconds") or 30)
+        if clip_sec not in (15, 30, 45, 60):
+            clip_sec = 30
+        mirror = bool(s.get("mirror"))
+        banner_path = s.get("banner") or ""
 
-        await asyncio.to_thread(
-            process,
-            src,
-            out,
-            s.get("watermark") or None,
-            s.get("position", "bottom-right"),
-            s.get("mirror", False),
-        )
-
-        out_mb = out.stat().st_size / 1024 / 1024
         await status.edit_text(
-            f"Обработка 9:16 готова ({out_mb:.1f} МБ).\nРежу на части по 60 сек…"
+            f"Скачано: {size_mb:.1f} МБ\nДелаю вертикаль 9:16…"
+        )
+        vertical = processed / f"{src.stem}_vertical.mp4"
+        await asyncio.to_thread(to_vertical, src, vertical, mirror)
+
+        await status.edit_text(f"Режу на части по {clip_sec} сек…")
+        parts = await asyncio.to_thread(
+            split_video, vertical, processed / "parts", clip_sec
         )
 
-        if out.stat().st_size <= MAX_SEND_BYTES:
-            await message.answer_video(FSInputFile(out), caption="Предпросмотр готов.")
-        else:
+        final_parts = []
+        if banner_path and Path(banner_path).exists():
             await status.edit_text(
-                f"Файл {out_mb:.0f} МБ — целиком в Telegram не влезет.\n"
-                f"Режу на части по 60 сек…"
+                f"Вставляю баннер в центр ({len(parts)} шт.)…"
+            )
+            ban_dir = processed / "with_banner"
+            ban_dir.mkdir(parents=True, exist_ok=True)
+            for i, part in enumerate(parts):
+                out_p = ban_dir / f"part_{i:03d}.mp4"
+                await asyncio.to_thread(
+                    insert_banner_center, part, banner_path, out_p
+                )
+                final_parts.append(out_p)
+                if i % 2 == 0 or i == len(parts) - 1:
+                    try:
+                        await status.edit_text(
+                            f"Баннер: {i + 1}/{len(parts)}"
+                        )
+                    except Exception:
+                        pass
+        else:
+            final_parts = parts
+            await status.edit_text(
+                "Баннер не задан (файл с подписью «баннер»).\n"
+                "Отдаю нарезки без баннера."
             )
 
-        parts = await asyncio.to_thread(split_video, out, processed / "parts", 60)
-        await status.edit_text(f"Готово.\nЧастей: {len(parts)}")
+        await status.edit_text(f"Готово.\nЧастей: {len(final_parts)}")
 
-        if parts and parts[0].stat().st_size <= MAX_SEND_BYTES:
-            await message.answer_video(
-                FSInputFile(parts[0]),
-                caption="Часть 1 (превью)",
-            )
+        if final_parts:
+            first = final_parts[0]
+            if first.stat().st_size <= MAX_SEND_BYTES:
+                await message.answer_video(
+                    FSInputFile(first),
+                    caption=f"Часть 1/{len(final_parts)} (превью)",
+                )
+            else:
+                await message.answer(
+                    f"Первая часть слишком большая для Telegram "
+                    f"({first.stat().st_size // 1024 // 1024} МБ)."
+                )
 
     except Exception as e:
         try:
             await status.edit_text(f"Ошибка: {type(e).__name__}: {e}")
         except Exception:
             await message.answer(f"Ошибка: {type(e).__name__}: {e}")
-
-
-def _bar(percent: int, width: int = 10) -> str:
-    filled = max(0, min(width, round(percent * width / 100)))
-    return "█" * filled + "░" * (width - filled)
