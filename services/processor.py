@@ -3,7 +3,6 @@ import subprocess
 
 
 def run(cmd):
-    # capture stderr to help debug filter errors
     r = subprocess.run(cmd, capture_output=True, text=True)
     if r.returncode != 0:
         err = (r.stderr or r.stdout or "")[-2000:]
@@ -28,15 +27,25 @@ def duration(path):
 
 
 def to_vertical(src, dst, mirror=False, width=720, height=1280):
+    """
+    9:16 с размытым фоном вместо чёрных полос:
+    фон = кадр, растянутый и blur; поверх — исходник с сохранением пропорций.
+    """
     src, dst = Path(src), Path(dst)
     dst.parent.mkdir(parents=True, exist_ok=True)
-    vf = (
-        f"fps=30,"
-        f"scale={width}:{height}:force_original_aspect_ratio=decrease,"
-        f"pad={width}:{height}:(ow-iw)/2:(oh-ih)/2,setsar=1"
+
+    # bg: cover + blur; fg: contain; overlay center
+    fc = (
+        f"[0:v]fps=30,split=2[bg][fg];"
+        f"[bg]scale={width}:{height}:force_original_aspect_ratio=increase,"
+        f"crop={width}:{height},gblur=sigma=25,eq=brightness=-0.05[blur];"
+        f"[fg]scale={width}:{height}:force_original_aspect_ratio=decrease[main];"
+        f"[blur][main]overlay=(W-w)/2:(H-h)/2"
     )
     if mirror:
-        vf += ",hflip"
+        fc += ",hflip"
+    fc += ",setsar=1,format=yuv420p[vout]"
+
     run(
         [
             "ffmpeg",
@@ -45,10 +54,10 @@ def to_vertical(src, dst, mirror=False, width=720, height=1280):
             "2",
             "-i",
             str(src),
-            "-vf",
-            vf,
+            "-filter_complex",
+            fc,
             "-map",
-            "0:v",
+            "[vout]",
             "-map",
             "0:a?",
             "-c:v",
@@ -63,6 +72,7 @@ def to_vertical(src, dst, mirror=False, width=720, height=1280):
             "44100",
             "-ac",
             "2",
+            "-shortest",
             "-movflags",
             "+faststart",
             str(dst),
@@ -72,11 +82,7 @@ def to_vertical(src, dst, mirror=False, width=720, height=1280):
 
 
 def insert_banner_center(src, banner, dst):
-    """
-    Баннер по центру ролика.
-    Простая схема: до | баннер (на весь кадр) | после.
-    Числа для trim считаются в Python (ffmpeg не считает 12.8+0.04).
-    """
+    """Баннер по центру ролика (замена среднего сегмента)."""
     src, banner, dst = Path(src), Path(banner), Path(dst)
     dst.parent.mkdir(parents=True, exist_ok=True)
 
@@ -85,12 +91,9 @@ def insert_banner_center(src, banner, dst):
     start = max(0.0, d_main / 2.0 - d_ban / 2.0)
     if d_main <= d_ban + 0.05:
         start = 0.0
-    end_ban = start + d_ban
-    if end_ban > d_main:
-        end_ban = d_main
-        d_ban = max(0.1, end_ban - start)
+    end_ban = min(d_main, start + d_ban)
+    d_ban = max(0.1, end_ban - start)
 
-    # precompute all times as plain floats for filter string
     t0 = 0.0
     t1 = round(start, 3)
     t2 = round(end_ban, 3)
@@ -99,12 +102,9 @@ def insert_banner_center(src, banner, dst):
 
     w, h = 720, 1280
 
-    # Video: part before + scaled banner full frame + part after
-    # Use overlay of banner on frozen frame OR just replace segment with banner
-    # Simpler reliable approach: concat [trim before][banner scaled][trim after]
     fc = (
         f"[0:v]fps=30,scale={w}:{h}:force_original_aspect_ratio=decrease,"
-        f"pad={w}:{h}:(ow-iw)/2:(oh-ih)/2,setsar=1,format=yuv420p,setsar=1[base];"
+        f"pad={w}:{h}:(ow-iw)/2:(oh-ih)/2,setsar=1,format=yuv420p[base];"
         f"[1:v]fps=30,scale={w}:{h}:force_original_aspect_ratio=decrease,"
         f"pad={w}:{h}:(ow-iw)/2:(oh-ih)/2,setsar=1,format=yuv420p[ban];"
         f"[base]split=2[b0][b2];"
@@ -133,7 +133,7 @@ def insert_banner_center(src, banner, dst):
         )
         map_args = ["-map", "[vout]", "-map", "[aout]"]
     elif has_main:
-        fc += f";[0:a]asetpts=PTS-STARTPTS[aout]"
+        fc += ";[0:a]asetpts=PTS-STARTPTS[aout]"
         map_args = ["-map", "[vout]", "-map", "[aout]"]
     else:
         map_args = ["-map", "[vout]"]

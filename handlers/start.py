@@ -1,26 +1,42 @@
 from aiogram import Router
 from aiogram.filters import Command
-from aiogram.types import Message
+from aiogram.types import Message, ReplyKeyboardMarkup, KeyboardButton
 from config import is_allowed
 
 router = Router()
 
 
+def main_kb():
+    return ReplyKeyboardMarkup(
+        keyboard=[
+            [KeyboardButton(text="⚙️ Настройки"), KeyboardButton(text="⏱ Длина")],
+            [KeyboardButton(text="🎬 Баннер"), KeyboardButton(text="🪞 Mirror")],
+            [KeyboardButton(text="📝 Caption"), KeyboardButton(text="📦 Все части")],
+            [KeyboardButton(text="🔁 Последние"), KeyboardButton(text="❓ Помощь")],
+        ],
+        resize_keyboard=True,
+    )
+
+
 @router.message(Command("start", "help"))
 async def start(message: Message):
     if not is_allowed(message.from_user.id):
-        return await message.answer("Доступ запрещён.")
+        return await message.answer("⛔️ Доступ запрещён.")
     await message.answer(
-        "🎬 Видео-бот: нарезка + баннер CSDOG\n\n"
-        "Отправьте ссылку на видео (RuTube, VK, Twitch…).\n"
-        "YouTube — если сеть/cookies позволяют.\n\n"
-        "Команды:\n"
-        "/settings — текущие настройки\n"
-        "/clip — длина куска: 15 / 30 / 45 / 60 сек\n"
-        "/banner — инструкция по баннеру\n"
-        "/mirror — зеркало вкл/выкл\n\n"
-        "Баннер (MP4 с озвучкой) пришлите файлом с подписью: баннер\n"
-        "Скачать креатив: https://t.me/csdogTikTok/62\n"
-        "Правила: https://telegra.ph/Usloviya-bannerov-csdog-09-08\n\n"
-        "TikTok drafts — после подключения официального API."
+        "━━━━━━━━━━━━━━━━━━\n"
+        "🎬  <b>Video Bot</b> · CSDOG\n"
+        "━━━━━━━━━━━━━━━━━━\n\n"
+        "Отправьте <b>ссылку</b> на видео\n"
+        "(RuTube, VK и др.)\n\n"
+        "Я скачаю → нарежу → сделаю 9:16\n"
+        "с <b>размытым фоном</b> → вставлю баннер\n\n"
+        "━━━━━━━━━━━━━━━━━━\n"
+        "⚙️ /settings — всё меню\n"
+        "⏱ /clip — 15 · 30 · 45 · 60 сек\n"
+        "🎬 баннер: файл с подписью <code>баннер</code>\n"
+        "📝 /caption — текст для TikTok\n"
+        "📦 /sendall · 🔁 /last\n"
+        "━━━━━━━━━━━━━━━━━━",
+        parse_mode="HTML",
+        reply_markup=main_kb(),
     )

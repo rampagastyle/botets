@@ -6,7 +6,7 @@ from aiogram import Router
 from aiogram.types import Message, FSInputFile
 
 from config import WORK_DIR, MAX_FILE_SIZE, is_allowed
-from services.storage import get_settings
+from services.storage import get_settings, save_settings
 from services.downloader import download
 from services.processor import to_vertical, insert_banner_center, split_video
 
@@ -28,7 +28,7 @@ async def video_link(message: Message):
     raw = user_dir / "raw"
     processed = user_dir / "processed"
 
-    status = await message.answer("Ссылка принята.\nПодключаюсь к источнику…")
+    status = await message.answer("🔗 <b>Ссылка принята</b>\nПодключаюсь…", parse_mode="HTML")
 
     loop = asyncio.get_running_loop()
     last_edit = {"t": 0.0}
@@ -51,7 +51,7 @@ async def video_link(message: Message):
         asyncio.run_coroutine_threadsafe(_edit(), loop)
 
     try:
-        await status.edit_text("Скачивание началось…")
+        await status.edit_text("⬇️ <b>Скачивание…</b>", parse_mode="HTML")
         src = await asyncio.to_thread(
             download, message.text.strip(), raw, progress_callback
         )
@@ -66,10 +66,12 @@ async def video_link(message: Message):
             clip_sec = 30
         mirror = bool(s.get("mirror"))
         banner_path = s.get("banner") or ""
+        send_all = bool(s.get("send_all"))
+        caption = s.get("caption") or ""
 
-        # 1) Сначала режем СЫРОЕ (copy) — мало RAM
         await status.edit_text(
-            f"Скачано: {size_mb:.1f} МБ\nРежу на части по {clip_sec} сек…"
+            f"✅ Скачано: <b>{size_mb:.1f} МБ</b>\n✂️ Режу по <b>{clip_sec} сек</b>…",
+            parse_mode="HTML",
         )
         raw_parts = await asyncio.to_thread(
             split_video, src, processed / "raw_parts", clip_sec
@@ -77,7 +79,6 @@ async def video_link(message: Message):
         if not raw_parts:
             return await status.edit_text("Не удалось нарезать видео.")
 
-        # 2) Каждый кусок отдельно: вертикаль → баннер
         final_parts = []
         out_dir = processed / "final"
         out_dir.mkdir(parents=True, exist_ok=True)
@@ -85,7 +86,8 @@ async def video_link(message: Message):
         for i, part in enumerate(raw_parts):
             try:
                 await status.edit_text(
-                    f"Обработка {i + 1}/{len(raw_parts)} (9:16)…"
+                    f"🎨 9:16 + blur  <b>{i + 1}/{len(raw_parts)}</b>",
+                    parse_mode="HTML",
                 )
             except Exception:
                 pass
@@ -97,7 +99,8 @@ async def video_link(message: Message):
                 final = out_dir / f"part_{i:03d}.mp4"
                 try:
                     await status.edit_text(
-                        f"Баннер {i + 1}/{len(raw_parts)}…"
+                        f"🎬 Баннер  <b>{i + 1}/{len(raw_parts)}</b>",
+                        parse_mode="HTML",
                     )
                 except Exception:
                     pass
@@ -110,22 +113,37 @@ async def video_link(message: Message):
 
         note = ""
         if not (banner_path and Path(banner_path).exists()):
-            note = "\nБаннер не задан (файл с подписью «баннер»)."
+            note = "\nℹ️ Баннер не задан"
 
-        await status.edit_text(f"Готово.\nЧастей: {len(final_parts)}{note}")
+        # remember paths for /last and /todraft
+        save_settings(
+            message.from_user.id,
+            last_parts=[str(p) for p in final_parts],
+        )
 
-        if final_parts:
-            first = final_parts[0]
-            if first.stat().st_size <= MAX_SEND_BYTES:
-                await message.answer_video(
-                    FSInputFile(first),
-                    caption=f"Часть 1/{len(final_parts)} (превью)",
-                )
-            else:
+        await status.edit_text(f"━━━━━━━━━━━━━━━━━━\n✅ <b>Готово</b> · частей: {len(final_parts)}{note}\n━━━━━━━━━━━━━━━━━━", parse_mode="HTML")
+
+        if caption:
+            await message.answer(f"📝 Caption:\n{caption}")
+
+        to_send = final_parts if send_all else final_parts[:1]
+        for i, part in enumerate(to_send, start=1):
+            if part.stat().st_size > MAX_SEND_BYTES:
                 await message.answer(
-                    f"Первая часть слишком большая для Telegram "
-                    f"({first.stat().st_size // 1024 // 1024} МБ)."
+                    f"Часть {i} слишком большая "
+                    f"({part.stat().st_size // 1024 // 1024} МБ), пропуск."
                 )
+                continue
+            await message.answer_video(
+                FSInputFile(part),
+                caption=f"Часть {i}/{len(final_parts)}",
+            )
+
+        if not send_all and len(final_parts) > 1:
+            await message.answer(
+                f"Отправлена 1 из {len(final_parts)}. "
+                "Все части: /sendall и снова ссылка, или /last"
+            )
 
     except Exception as e:
         try:

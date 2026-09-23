@@ -2,6 +2,11 @@ from pathlib import Path
 import json
 from config import WORK_DIR, USERS_FILE, SETTINGS_FILE, ACCOUNTS_FILE
 
+DEFAULT_CAPTION = (
+    "🔥 #cs2 #csdog #csgo #counterstrike\n"
+    "csdog.io"
+)
+
 
 def ensure_storage():
     WORK_DIR.mkdir(parents=True, exist_ok=True)
@@ -33,11 +38,13 @@ def get_settings(user_id):
     rows = _read(SETTINGS_FILE)
     for x in rows:
         if x.get("user_id") == str(user_id):
-            # defaults for new fields
             x.setdefault("banner", "")
             x.setdefault("clip_seconds", 30)
             x.setdefault("mirror", False)
             x.setdefault("autopost", False)
+            x.setdefault("caption", DEFAULT_CAPTION)
+            x.setdefault("send_all", False)
+            x.setdefault("last_parts", [])
             return x
     return {
         "user_id": str(user_id),
@@ -45,6 +52,9 @@ def get_settings(user_id):
         "clip_seconds": 30,
         "mirror": False,
         "autopost": False,
+        "caption": DEFAULT_CAPTION,
+        "send_all": False,
+        "last_parts": [],
     }
 
 
@@ -71,3 +81,11 @@ def save_account(user_id, platform, payload):
     ]
     rows.append({"user_id": str(user_id), "platform": platform, "payload": payload})
     _write(ACCOUNTS_FILE, rows)
+
+
+def get_account(user_id, platform):
+    rows = _read(ACCOUNTS_FILE)
+    for x in rows:
+        if x.get("user_id") == str(user_id) and x.get("platform") == platform:
+            return x.get("payload") or {}
+    return None

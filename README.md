@@ -36,3 +36,13 @@ YouTube с IP облака часто требует cookies и всё равн�
 ## TikTok drafts
 
 Только через официальный Content Posting API (`video.upload` → inbox). Заглушка в `services/tiktok.py`.
+
+## TikTok drafts
+
+1. Create app: https://developers.tiktok.com
+2. Product: Content Posting API, scope `video.upload`
+3. OAuth → user `access_token`
+4. In bot: `/settoken act.xxx`
+5. After processing a video: `/todraft`
+
+See `/tiktok` in the bot for steps.
