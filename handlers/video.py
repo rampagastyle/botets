@@ -67,45 +67,52 @@ async def video_link(message: Message):
         mirror = bool(s.get("mirror"))
         banner_path = s.get("banner") or ""
 
+        # 1) Сначала режем СЫРОЕ (copy) — мало RAM
         await status.edit_text(
-            f"Скачано: {size_mb:.1f} МБ\nДелаю вертикаль 9:16…"
+            f"Скачано: {size_mb:.1f} МБ\nРежу на части по {clip_sec} сек…"
         )
-        vertical = processed / f"{src.stem}_vertical.mp4"
-        await asyncio.to_thread(to_vertical, src, vertical, mirror)
-
-        await status.edit_text(f"Режу на части по {clip_sec} сек…")
-        parts = await asyncio.to_thread(
-            split_video, vertical, processed / "parts", clip_sec
+        raw_parts = await asyncio.to_thread(
+            split_video, src, processed / "raw_parts", clip_sec
         )
+        if not raw_parts:
+            return await status.edit_text("Не удалось нарезать видео.")
 
+        # 2) Каждый кусок отдельно: вертикаль → баннер
         final_parts = []
-        if banner_path and Path(banner_path).exists():
-            await status.edit_text(
-                f"Вставляю баннер в центр ({len(parts)} шт.)…"
-            )
-            ban_dir = processed / "with_banner"
-            ban_dir.mkdir(parents=True, exist_ok=True)
-            for i, part in enumerate(parts):
-                out_p = ban_dir / f"part_{i:03d}.mp4"
-                await asyncio.to_thread(
-                    insert_banner_center, part, banner_path, out_p
-                )
-                final_parts.append(out_p)
-                if i % 2 == 0 or i == len(parts) - 1:
-                    try:
-                        await status.edit_text(
-                            f"Баннер: {i + 1}/{len(parts)}"
-                        )
-                    except Exception:
-                        pass
-        else:
-            final_parts = parts
-            await status.edit_text(
-                "Баннер не задан (файл с подписью «баннер»).\n"
-                "Отдаю нарезки без баннера."
-            )
+        out_dir = processed / "final"
+        out_dir.mkdir(parents=True, exist_ok=True)
 
-        await status.edit_text(f"Готово.\nЧастей: {len(final_parts)}")
+        for i, part in enumerate(raw_parts):
+            try:
+                await status.edit_text(
+                    f"Обработка {i + 1}/{len(raw_parts)} (9:16)…"
+                )
+            except Exception:
+                pass
+
+            vert = out_dir / f"v_{i:03d}.mp4"
+            await asyncio.to_thread(to_vertical, part, vert, mirror)
+
+            if banner_path and Path(banner_path).exists():
+                final = out_dir / f"part_{i:03d}.mp4"
+                try:
+                    await status.edit_text(
+                        f"Баннер {i + 1}/{len(raw_parts)}…"
+                    )
+                except Exception:
+                    pass
+                await asyncio.to_thread(
+                    insert_banner_center, vert, banner_path, final
+                )
+                final_parts.append(final)
+            else:
+                final_parts.append(vert)
+
+        note = ""
+        if not (banner_path and Path(banner_path).exists()):
+            note = "\nБаннер не задан (файл с подписью «баннер»)."
+
+        await status.edit_text(f"Готово.\nЧастей: {len(final_parts)}{note}")
 
         if final_parts:
             first = final_parts[0]

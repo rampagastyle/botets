@@ -23,12 +23,14 @@ def duration(path):
     return float(out)
 
 
-def to_vertical(src, dst, mirror=False):
+def to_vertical(src, dst, mirror=False, width=720, height=1280):
+    """Лёгкая конвертация под слабый RAM (Railway). 720x1280, 30fps, 2 потока."""
     src, dst = Path(src), Path(dst)
     dst.parent.mkdir(parents=True, exist_ok=True)
     vf = (
-        "scale=1080:1920:force_original_aspect_ratio=decrease,"
-        "pad=1080:1920:(ow-iw)/2:(oh-ih)/2,setsar=1"
+        f"fps=30,"
+        f"scale={width}:{height}:force_original_aspect_ratio=decrease,"
+        f"pad={width}:{height}:(ow-iw)/2:(oh-ih)/2,setsar=1"
     )
     if mirror:
         vf += ",hflip"
@@ -36,6 +38,8 @@ def to_vertical(src, dst, mirror=False):
         [
             "ffmpeg",
             "-y",
+            "-threads",
+            "2",
             "-i",
             str(src),
             "-vf",
@@ -47,9 +51,9 @@ def to_vertical(src, dst, mirror=False):
             "-c:v",
             "libx264",
             "-preset",
-            "veryfast",
+            "ultrafast",
             "-crf",
-            "23",
+            "28",
             "-c:a",
             "aac",
             "-ar",
@@ -65,10 +69,7 @@ def to_vertical(src, dst, mirror=False):
 
 
 def insert_banner_center(src, banner, dst):
-    """
-    Баннер по центру ролика (куски <= 60 с, правила CSDOG).
-    На время баннера основной кадр заморожен, поверх — баннер с озвучкой.
-    """
+    """Баннер по центру ролика (куски <= 60 с)."""
     src, banner, dst = Path(src), Path(banner), Path(dst)
     dst.parent.mkdir(parents=True, exist_ok=True)
 
@@ -78,13 +79,12 @@ def insert_banner_center(src, banner, dst):
     if d_main <= d_ban + 0.1:
         start = 0.0
 
-    # Разбиваем на 3 сегмента: до баннера | баннер | после
-    # Баннер масштабируем под 9:16 и кладём по центру.
+    w, h = 720, 1280
     fc = (
-        f"[0:v]scale=1080:1920:force_original_aspect_ratio=decrease,"
-        f"pad=1080:1920:(ow-iw)/2:(oh-ih)/2,setsar=1,fps=30,format=yuv420p[base];"
-        f"[1:v]scale=1080:1920:force_original_aspect_ratio=decrease,"
-        f"pad=1080:1920:(ow-iw)/2:(oh-ih)/2,setsar=1,fps=30,format=yuv420p[ban];"
+        f"[0:v]fps=30,scale={w}:{h}:force_original_aspect_ratio=decrease,"
+        f"pad={w}:{h}:(ow-iw)/2:(oh-ih)/2,setsar=1,format=yuv420p[base];"
+        f"[1:v]fps=30,scale={w}:{h}:force_original_aspect_ratio=decrease,"
+        f"pad={w}:{h}:(ow-iw)/2:(oh-ih)/2,setsar=1,format=yuv420p[ban];"
         f"[base]split=3[b0][b1][b2];"
         f"[b0]trim=0:{start:.3f},setpts=PTS-STARTPTS[v0];"
         f"[b1]trim={start:.3f}:{start:.3f}+0.04,setpts=PTS-STARTPTS,"
@@ -94,7 +94,6 @@ def insert_banner_center(src, banner, dst):
         f"[v0][vmid][v2]concat=n=3:v=1:a=0[vout]"
     )
 
-    # Аудио: кусок до + аудио баннера + кусок после (если есть дорожки)
     has_main_audio = _has_audio(src)
     has_ban_audio = _has_audio(banner)
 
@@ -114,38 +113,41 @@ def insert_banner_center(src, banner, dst):
         )
         map_args = ["-map", "[vout]", "-map", "[aout]"]
     elif has_main_audio:
-        fc += f";[0:a]asetpts=PTS-STARTPTS[aout]"
+        fc += ";[0:a]asetpts=PTS-STARTPTS[aout]"
         map_args = ["-map", "[vout]", "-map", "[aout]"]
     else:
         map_args = ["-map", "[vout]"]
 
-    cmd = [
-        "ffmpeg",
-        "-y",
-        "-i",
-        str(src),
-        "-i",
-        str(banner),
-        "-filter_complex",
-        fc,
-        *map_args,
-        "-c:v",
-        "libx264",
-        "-preset",
-        "veryfast",
-        "-crf",
-        "23",
-        "-c:a",
-        "aac",
-        "-ar",
-        "44100",
-        "-ac",
-        "2",
-        "-movflags",
-        "+faststart",
-        str(dst),
-    ]
-    run(cmd)
+    run(
+        [
+            "ffmpeg",
+            "-y",
+            "-threads",
+            "2",
+            "-i",
+            str(src),
+            "-i",
+            str(banner),
+            "-filter_complex",
+            fc,
+            *map_args,
+            "-c:v",
+            "libx264",
+            "-preset",
+            "ultrafast",
+            "-crf",
+            "28",
+            "-c:a",
+            "aac",
+            "-ar",
+            "44100",
+            "-ac",
+            "2",
+            "-movflags",
+            "+faststart",
+            str(dst),
+        ]
+    )
     return dst
 
 
@@ -172,6 +174,7 @@ def _has_audio(path) -> bool:
 
 
 def split_video(src, out_dir, chunk_seconds=30):
+    """Нарезка без перекодирования (мало RAM)."""
     out_dir = Path(out_dir)
     if out_dir.exists():
         for p in out_dir.glob("part_*.mp4"):
@@ -185,6 +188,8 @@ def split_video(src, out_dir, chunk_seconds=30):
         [
             "ffmpeg",
             "-y",
+            "-threads",
+            "2",
             "-i",
             str(src),
             "-c",
