@@ -101,7 +101,7 @@ async def video_link(message: Message):
         for i, part in enumerate(raw_parts):
             try:
                 await status.edit_text(
-                    f"🎨 9:16 + blur  <b>{i + 1}/{len(raw_parts)}</b>",
+                    f"🎨 9:16  <b>{i + 1}/{len(raw_parts)}</b>",
                     parse_mode="HTML",
                 )
             except Exception:
