@@ -4,7 +4,8 @@ import time
 from pathlib import Path
 
 from aiogram import Router
-from aiogram.types import Message, FSInputFile
+from aiogram.types import Message, FSInputFile, InlineKeyboardMarkup, InlineKeyboardButton, CallbackQuery
+from aiogram import F
 
 from config import WORK_DIR, MAX_FILE_SIZE, is_allowed
 from services.storage import get_settings, save_settings
@@ -150,26 +151,27 @@ async def video_link(message: Message):
         if caption:
             await message.answer(f"📝 Caption:\n<code>{caption}</code>", parse_mode="HTML")
 
-        to_send = final_parts if send_all else final_parts[:1]
-        for i, part in enumerate(to_send, start=1):
-            if not part.exists():
-                continue
-            if part.stat().st_size > MAX_SEND_BYTES:
-                await message.answer(
-                    f"Часть {i} слишком большая "
-                    f"({part.stat().st_size // 1024 // 1024} МБ), пропуск."
-                )
-                continue
-            await message.answer_video(
-                FSInputFile(part),
-                caption=f"Часть {i}/{len(final_parts)}",
-            )
+        # сброс индекса отправки
+        save_settings(message.from_user.id, last_sent_index=0)
 
-        if not send_all and len(final_parts) > 1:
-            await message.answer(
-                f"Отправлена 1 из {len(final_parts)}.\n"
-                "Все части: /sendall или /last"
-            )
+        if send_all:
+            for i, part in enumerate(final_parts, start=1):
+                if not part.exists():
+                    continue
+                if part.stat().st_size > MAX_SEND_BYTES:
+                    await message.answer(
+                        f"Часть {i} слишком большая "
+                        f"({part.stat().st_size // 1024 // 1024} МБ), пропуск."
+                    )
+                    continue
+                await message.answer_video(
+                    FSInputFile(part),
+                    caption=f"Часть {i}/{len(final_parts)}",
+                )
+            save_settings(message.from_user.id, last_sent_index=len(final_parts))
+        else:
+            # первая часть + кнопка «Следующая»
+            await _send_part(message, final_parts, 0)
 
         # подчистка промежуточных (final оставляем для /last)
         cleanup_user_work(user_dir, keep_final=True, keep_banner=True)
@@ -186,3 +188,82 @@ async def video_link(message: Message):
         except Exception:
             pass
         gc.collect()
+
+
+def _next_kb(index: int, total: int):
+    if index + 1 >= total:
+        return None
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [
+                InlineKeyboardButton(
+                    text=f"▶️ Следующая часть ({index + 2}/{total})",
+                    callback_data=f"nextpart:{index + 1}",
+                )
+            ]
+        ]
+    )
+
+
+async def _send_part(message: Message, parts: list, index: int):
+    total = len(parts)
+    if index < 0 or index >= total:
+        await message.answer("Больше частей нет.")
+        return
+    part = Path(parts[index]) if not isinstance(parts[index], Path) else parts[index]
+    if not part.exists():
+        await message.answer(f"Файл части {index + 1} не найден. Нарежьте снова.")
+        return
+    if part.stat().st_size > MAX_SEND_BYTES:
+        await message.answer(
+            f"Часть {index + 1} слишком большая "
+            f"({part.stat().st_size // 1024 // 1024} МБ)."
+        )
+        save_settings(message.from_user.id, last_sent_index=index + 1)
+        # предложить перейти дальше
+        kb = _next_kb(index, total)
+        if kb:
+            await message.answer("Пропуск. Можно взять следующую:", reply_markup=kb)
+        return
+
+    kb = _next_kb(index, total)
+    await message.answer_video(
+        FSInputFile(part),
+        caption=f"Часть {index + 1}/{total}",
+        reply_markup=kb,
+    )
+    save_settings(message.from_user.id, last_sent_index=index + 1)
+
+
+@router.callback_query(F.data.startswith("nextpart:"))
+async def next_part_cb(call: CallbackQuery):
+    if not is_allowed(call.from_user.id):
+        return await call.answer("Нет доступа", show_alert=True)
+    try:
+        index = int(call.data.split(":")[1])
+    except (IndexError, ValueError):
+        return await call.answer("Ошибка", show_alert=True)
+
+    s = get_settings(call.from_user.id)
+    paths = [Path(p) for p in (s.get("last_parts") or [])]
+    if not paths:
+        await call.answer("Нет нарезок", show_alert=True)
+        return await call.message.answer("Сначала отправьте ссылку на видео.")
+
+    await call.answer()
+    # убрать кнопку со старого сообщения
+    try:
+        await call.message.edit_reply_markup(reply_markup=None)
+    except Exception:
+        pass
+
+    class _Msg:
+        """обёртка: answer_video от имени того же чата"""
+        def __init__(self, origin):
+            self._o = origin
+            self.from_user = call.from_user
+            self.chat = origin.chat
+            self.answer = origin.answer
+            self.answer_video = origin.answer_video
+
+    await _send_part(_Msg(call.message), paths, index)

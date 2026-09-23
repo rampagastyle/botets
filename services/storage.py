@@ -45,6 +45,7 @@ def get_settings(user_id):
             x.setdefault("caption", DEFAULT_CAPTION)
             x.setdefault("send_all", False)
             x.setdefault("last_parts", [])
+            x.setdefault("last_sent_index", 0)
             return x
     return {
         "user_id": str(user_id),
@@ -55,6 +56,7 @@ def get_settings(user_id):
         "caption": DEFAULT_CAPTION,
         "send_all": False,
         "last_parts": [],
+        "last_sent_index": 0,
     }
 
 
