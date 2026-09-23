@@ -70,7 +70,7 @@ async def video_link(message: Message):
             return await status.edit_text("⚠️ Файл слишком большой.", parse_mode="HTML")
 
         s = get_settings(message.from_user.id)
-        clip_sec = int(s.get("clip_seconds") or 30)
+        clip_sec = int(s.get("clip_seconds") or 15)
         if clip_sec not in (15, 30, 45, 60):
             clip_sec = 30
         mirror = bool(s.get("mirror"))

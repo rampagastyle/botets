@@ -2,24 +2,23 @@ from pathlib import Path
 import subprocess
 import shutil
 
+# Низкое разрешение специально под маленький RAM (Railway free ~512MB)
+W, H = 480, 854
+
 
 def run(cmd):
     r = subprocess.run(cmd, capture_output=True, text=True)
     if r.returncode != 0:
-        err = (r.stderr or r.stdout or "")[-1500:]
+        err = (r.stderr or r.stdout or "")[-1200:]
         raise RuntimeError(f"ffmpeg exit {r.returncode}: {err}")
 
 
 def duration(path):
     out = subprocess.check_output(
         [
-            "ffprobe",
-            "-v",
-            "error",
-            "-show_entries",
-            "format=duration",
-            "-of",
-            "default=noprint_wrappers=1:nokey=1",
+            "ffprobe", "-v", "error",
+            "-show_entries", "format=duration",
+            "-of", "default=noprint_wrappers=1:nokey=1",
             str(path),
         ],
         text=True,
@@ -27,134 +26,92 @@ def duration(path):
     return float(out)
 
 
-def to_vertical(src, dst, mirror=False, width=720, height=1280):
-    """Простая 9:16 с чёрными полями — минимальный расход RAM."""
+def to_vertical(src, dst, mirror=False, width=W, height=H):
+    """Лёгкая 9:16: 480x854, 30fps, 1 поток, чёрные поля."""
     src, dst = Path(src), Path(dst)
     dst.parent.mkdir(parents=True, exist_ok=True)
     vf = (
         f"fps=30,"
         f"scale={width}:{height}:force_original_aspect_ratio=decrease,"
-        f"pad={width}:{height}:(ow-iw)/2:(oh-ih)/2:black,setsar=1"
+        f"pad={width}:{height}:(ow-iw)/2:(oh-ih)/2:black,setsar=1,format=yuv420p"
     )
     if mirror:
-        vf += ",hflip"
-    run(
-        [
-            "ffmpeg",
-            "-y",
-            "-threads",
-            "1",
-            "-i",
-            str(src),
-            "-vf",
-            vf,
-            "-map",
-            "0:v",
-            "-map",
-            "0:a?",
-            "-c:v",
-            "libx264",
-            "-preset",
-            "ultrafast",
-            "-crf",
-            "28",
-            "-c:a",
-            "aac",
-            "-ar",
-            "44100",
-            "-ac",
-            "2",
-            "-movflags",
-            "+faststart",
-            str(dst),
-        ]
-    )
+        vf = (
+            f"fps=30,"
+            f"scale={width}:{height}:force_original_aspect_ratio=decrease,"
+            f"pad={width}:{height}:(ow-iw)/2:(oh-ih)/2:black,hflip,setsar=1,format=yuv420p"
+        )
+    run([
+        "ffmpeg", "-y",
+        "-threads", "1",
+        "-filter_threads", "1",
+        "-i", str(src),
+        "-vf", vf,
+        "-map", "0:v", "-map", "0:a?",
+        "-c:v", "libx264", "-preset", "ultrafast", "-crf", "30",
+        "-c:a", "aac", "-ar", "44100", "-ac", "2",
+        "-movflags", "+faststart",
+        str(dst),
+    ])
     return dst
 
 
 def insert_banner_center(src, banner, dst):
+    """
+    Баннер поверх середины одним проходом (overlay), без тройного concat —
+    меньше пиковая память.
+    """
     src, banner, dst = Path(src), Path(banner), Path(dst)
     dst.parent.mkdir(parents=True, exist_ok=True)
 
     d_main = duration(src)
-    d_ban = max(0.5, duration(banner))
+    d_ban = max(0.5, min(duration(banner), d_main))
     start = max(0.0, d_main / 2.0 - d_ban / 2.0)
-    if d_main <= d_ban + 0.05:
-        start = 0.0
-    end_ban = min(d_main, start + d_ban)
-    d_ban = max(0.1, end_ban - start)
+    end = min(d_main, start + d_ban)
+    t1, t2, db = round(start, 3), round(end, 3), round(d_ban, 3)
 
-    t0, t1 = 0.0, round(start, 3)
-    t2, t3 = round(end_ban, 3), round(d_main, 3)
-    db = round(d_ban, 3)
-    w, h = 720, 1280
-
+    # video: scale both, overlay banner in time window
+    # audio: main with banner audio mixed in window is complex — replace mid with banner audio via asplit
     fc = (
-        f"[0:v]fps=30,scale={w}:{h}:force_original_aspect_ratio=decrease,"
-        f"pad={w}:{h}:(ow-iw)/2:(oh-ih)/2,setsar=1,format=yuv420p[base];"
-        f"[1:v]fps=30,scale={w}:{h}:force_original_aspect_ratio=decrease,"
-        f"pad={w}:{h}:(ow-iw)/2:(oh-ih)/2,setsar=1,format=yuv420p[ban];"
-        f"[base]split=2[b0][b2];"
-        f"[b0]trim=start={t0}:end={t1},setpts=PTS-STARTPTS[v0];"
-        f"[ban]trim=start=0:end={db},setpts=PTS-STARTPTS[vmid];"
-        f"[b2]trim=start={t2}:end={t3},setpts=PTS-STARTPTS[v2];"
-        f"[v0][vmid][v2]concat=n=3:v=1:a=0[vout]"
+        f"[0:v]fps=30,scale={W}:{H}:force_original_aspect_ratio=decrease,"
+        f"pad={W}:{H}:(ow-iw)/2:(oh-ih)/2,setsar=1,format=yuv420p[base];"
+        f"[1:v]fps=30,scale={W}:{H}:force_original_aspect_ratio=decrease,"
+        f"pad={W}:{H}:(ow-iw)/2:(oh-ih)/2,setsar=1,format=yuv420p,setpts=PTS-STARTPTS+{t1}/TB[ban];"
+        f"[base][ban]overlay=0:0:enable='between(t,{t1},{t2})'[vout]"
     )
 
     has_main = _has_audio(src)
     has_ban = _has_audio(banner)
 
     if has_main and has_ban:
+        # before + banner audio + after
         fc += (
-            f";[0:a]atrim=start={t0}:end={t1},asetpts=PTS-STARTPTS[a0];"
+            f";[0:a]atrim=0:{t1},asetpts=PTS-STARTPTS[a0];"
             f"[1:a]aformat=sample_rates=44100:channel_layouts=stereo,"
-            f"atrim=start=0:end={db},asetpts=PTS-STARTPTS[aban];"
-            f"[0:a]atrim=start={t2}:end={t3},asetpts=PTS-STARTPTS[a2];"
+            f"atrim=0:{db},asetpts=PTS-STARTPTS[aban];"
+            f"[0:a]atrim={t2},asetpts=PTS-STARTPTS[a2];"
             f"[a0][aban][a2]concat=n=3:v=0:a=1[aout]"
         )
-        map_args = ["-map", "[vout]", "-map", "[aout]"]
-    elif has_ban:
-        fc += (
-            f";[1:a]aformat=sample_rates=44100:channel_layouts=stereo,"
-            f"atrim=start=0:end={db},asetpts=PTS-STARTPTS[aout]"
-        )
-        map_args = ["-map", "[vout]", "-map", "[aout]"]
+        maps = ["-map", "[vout]", "-map", "[aout]"]
     elif has_main:
         fc += ";[0:a]asetpts=PTS-STARTPTS[aout]"
-        map_args = ["-map", "[vout]", "-map", "[aout]"]
+        maps = ["-map", "[vout]", "-map", "[aout]"]
     else:
-        map_args = ["-map", "[vout]"]
+        maps = ["-map", "[vout]"]
 
-    run(
-        [
-            "ffmpeg",
-            "-y",
-            "-threads",
-            "1",
-            "-i",
-            str(src),
-            "-i",
-            str(banner),
-            "-filter_complex",
-            fc,
-            *map_args,
-            "-c:v",
-            "libx264",
-            "-preset",
-            "ultrafast",
-            "-crf",
-            "28",
-            "-c:a",
-            "aac",
-            "-ar",
-            "44100",
-            "-ac",
-            "2",
-            "-movflags",
-            "+faststart",
-            str(dst),
-        ]
-    )
+    run([
+        "ffmpeg", "-y",
+        "-threads", "1",
+        "-filter_threads", "1",
+        "-i", str(src),
+        "-i", str(banner),
+        "-filter_complex", fc,
+        *maps,
+        "-c:v", "libx264", "-preset", "ultrafast", "-crf", "30",
+        "-c:a", "aac", "-ar", "44100", "-ac", "2",
+        "-movflags", "+faststart",
+        str(dst),
+    ])
     return dst
 
 
@@ -162,15 +119,8 @@ def _has_audio(path) -> bool:
     try:
         out = subprocess.check_output(
             [
-                "ffprobe",
-                "-v",
-                "error",
-                "-select_streams",
-                "a",
-                "-show_entries",
-                "stream=codec_type",
-                "-of",
-                "csv=p=0",
+                "ffprobe", "-v", "error", "-select_streams", "a",
+                "-show_entries", "stream=codec_type", "-of", "csv=p=0",
                 str(path),
             ],
             text=True,
@@ -180,7 +130,7 @@ def _has_audio(path) -> bool:
         return False
 
 
-def split_video(src, out_dir, chunk_seconds=30):
+def split_video(src, out_dir, chunk_seconds=15):
     out_dir = Path(out_dir)
     if out_dir.exists():
         for p in out_dir.glob("part_*.mp4"):
@@ -190,27 +140,15 @@ def split_video(src, out_dir, chunk_seconds=30):
                 pass
     out_dir.mkdir(parents=True, exist_ok=True)
     pattern = out_dir / "part_%03d.mp4"
-    run(
-        [
-            "ffmpeg",
-            "-y",
-            "-threads",
-            "1",
-            "-i",
-            str(src),
-            "-c",
-            "copy",
-            "-map",
-            "0",
-            "-f",
-            "segment",
-            "-segment_time",
-            str(int(chunk_seconds)),
-            "-reset_timestamps",
-            "1",
-            str(pattern),
-        ]
-    )
+    run([
+        "ffmpeg", "-y", "-threads", "1",
+        "-i", str(src),
+        "-c", "copy", "-map", "0",
+        "-f", "segment",
+        "-segment_time", str(int(chunk_seconds)),
+        "-reset_timestamps", "1",
+        str(pattern),
+    ])
     return sorted(out_dir.glob("part_*.mp4"))
 
 

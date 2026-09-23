@@ -39,7 +39,7 @@ def get_settings(user_id):
     for x in rows:
         if x.get("user_id") == str(user_id):
             x.setdefault("banner", "")
-            x.setdefault("clip_seconds", 30)
+            x.setdefault("clip_seconds", 15)
             x.setdefault("mirror", False)
             x.setdefault("autopost", False)
             x.setdefault("caption", DEFAULT_CAPTION)
@@ -49,7 +49,7 @@ def get_settings(user_id):
     return {
         "user_id": str(user_id),
         "banner": "",
-        "clip_seconds": 30,
+        "clip_seconds": 15,
         "mirror": False,
         "autopost": False,
         "caption": DEFAULT_CAPTION,

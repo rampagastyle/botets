@@ -27,7 +27,7 @@ def download(url, out_dir, progress_callback=None):
 
     opts = {
         "outtmpl": str(Path(out_dir) / "%(id)s.%(ext)s"),
-        "format": "bestvideo[height<=1080]+bestaudio/best/best",
+        "format": "bestvideo[height<=480]+bestaudio/best[height<=480]/best",
         "merge_output_format": "mp4",
         "noplaylist": True,
         "quiet": True,
