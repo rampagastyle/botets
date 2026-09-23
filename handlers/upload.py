@@ -8,6 +8,8 @@ from aiogram.types import Message, FSInputFile
 from config import is_allowed
 from services.storage import get_settings
 from services.tiktok import get_tiktok_token, upload_to_inbox
+from services.processor import cleanup_user_work
+from config import WORK_DIR
 
 router = Router()
 MAX_SEND_BYTES = 45 * 1024 * 1024
@@ -73,3 +75,12 @@ async def todraft_cmd(message: Message):
             f"Ошибка TikTok API: {type(e).__name__}: {e}\n\n"
             "Проверьте scope video.upload и срок access_token."
         )
+
+
+@router.message(Command("cleanup"))
+async def cleanup_cmd(message: Message):
+    if not is_allowed(message.from_user.id):
+        return
+    user_dir = WORK_DIR / str(message.from_user.id)
+    cleanup_user_work(user_dir, keep_final=False, keep_banner=True)
+    await message.answer("🧹 Временные файлы удалены (баннер оставлен).")

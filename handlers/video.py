@@ -1,4 +1,5 @@
 import asyncio
+import gc
 import time
 from pathlib import Path
 
@@ -8,7 +9,13 @@ from aiogram.types import Message, FSInputFile
 from config import WORK_DIR, MAX_FILE_SIZE, is_allowed
 from services.storage import get_settings, save_settings
 from services.downloader import download
-from services.processor import to_vertical, insert_banner_center, split_video
+from services.processor import (
+    to_vertical,
+    insert_banner_center,
+    split_video,
+    cleanup_paths,
+    cleanup_user_work,
+)
 
 router = Router()
 MAX_SEND_BYTES = 45 * 1024 * 1024
@@ -22,13 +29,15 @@ def _bar(percent: int, width: int = 10) -> str:
 @router.message(lambda m: m.text and m.text.startswith(("http://", "https://")))
 async def video_link(message: Message):
     if not is_allowed(message.from_user.id):
-        return await message.answer("Доступ запрещён.")
+        return await message.answer("⛔️ Доступ запрещён.")
 
     user_dir = WORK_DIR / str(message.from_user.id)
     raw = user_dir / "raw"
     processed = user_dir / "processed"
 
-    status = await message.answer("🔗 <b>Ссылка принята</b>\nПодключаюсь…", parse_mode="HTML")
+    status = await message.answer(
+        "🔗 <b>Ссылка принята</b>\nПодключаюсь…", parse_mode="HTML"
+    )
 
     loop = asyncio.get_running_loop()
     last_edit = {"t": 0.0}
@@ -58,7 +67,7 @@ async def video_link(message: Message):
 
         size_mb = src.stat().st_size / 1024 / 1024
         if src.stat().st_size > MAX_FILE_SIZE:
-            return await status.edit_text("Файл превышает установленный лимит.")
+            return await status.edit_text("⚠️ Файл слишком большой.", parse_mode="HTML")
 
         s = get_settings(message.from_user.id)
         clip_sec = int(s.get("clip_seconds") or 30)
@@ -70,14 +79,20 @@ async def video_link(message: Message):
         caption = s.get("caption") or ""
 
         await status.edit_text(
-            f"✅ Скачано: <b>{size_mb:.1f} МБ</b>\n✂️ Режу по <b>{clip_sec} сек</b>…",
+            f"✅ Скачано: <b>{size_mb:.1f} МБ</b>\n"
+            f"✂️ Режу по <b>{clip_sec} сек</b>…",
             parse_mode="HTML",
         )
+        raw_parts_dir = processed / "raw_parts"
         raw_parts = await asyncio.to_thread(
-            split_video, src, processed / "raw_parts", clip_sec
+            split_video, src, raw_parts_dir, clip_sec
         )
+        # сырой длинный файл больше не нужен
+        cleanup_paths(src)
+        gc.collect()
+
         if not raw_parts:
-            return await status.edit_text("Не удалось нарезать видео.")
+            return await status.edit_text("⚠️ Не удалось нарезать.", parse_mode="HTML")
 
         final_parts = []
         out_dir = processed / "final"
@@ -94,6 +109,9 @@ async def video_link(message: Message):
 
             vert = out_dir / f"v_{i:03d}.mp4"
             await asyncio.to_thread(to_vertical, part, vert, mirror)
+            # сырой кусок можно удалить сразу
+            cleanup_paths(part)
+            gc.collect()
 
             if banner_path and Path(banner_path).exists():
                 final = out_dir / f"part_{i:03d}.mp4"
@@ -107,27 +125,35 @@ async def video_link(message: Message):
                 await asyncio.to_thread(
                     insert_banner_center, vert, banner_path, final
                 )
+                cleanup_paths(vert)
                 final_parts.append(final)
             else:
                 final_parts.append(vert)
+            gc.collect()
 
         note = ""
         if not (banner_path and Path(banner_path).exists()):
             note = "\nℹ️ Баннер не задан"
 
-        # remember paths for /last and /todraft
         save_settings(
             message.from_user.id,
             last_parts=[str(p) for p in final_parts],
         )
 
-        await status.edit_text(f"━━━━━━━━━━━━━━━━━━\n✅ <b>Готово</b> · частей: {len(final_parts)}{note}\n━━━━━━━━━━━━━━━━━━", parse_mode="HTML")
+        await status.edit_text(
+            f"━━━━━━━━━━━━━━━━━━\n"
+            f"✅ <b>Готово</b> · частей: {len(final_parts)}{note}\n"
+            f"━━━━━━━━━━━━━━━━━━",
+            parse_mode="HTML",
+        )
 
         if caption:
-            await message.answer(f"📝 Caption:\n{caption}")
+            await message.answer(f"📝 Caption:\n<code>{caption}</code>", parse_mode="HTML")
 
         to_send = final_parts if send_all else final_parts[:1]
         for i, part in enumerate(to_send, start=1):
+            if not part.exists():
+                continue
             if part.stat().st_size > MAX_SEND_BYTES:
                 await message.answer(
                     f"Часть {i} слишком большая "
@@ -141,12 +167,22 @@ async def video_link(message: Message):
 
         if not send_all and len(final_parts) > 1:
             await message.answer(
-                f"Отправлена 1 из {len(final_parts)}. "
-                "Все части: /sendall и снова ссылка, или /last"
+                f"Отправлена 1 из {len(final_parts)}.\n"
+                "Все части: /sendall или /last"
             )
+
+        # подчистка промежуточных (final оставляем для /last)
+        cleanup_user_work(user_dir, keep_final=True, keep_banner=True)
+        gc.collect()
 
     except Exception as e:
         try:
-            await status.edit_text(f"Ошибка: {type(e).__name__}: {e}")
+            await status.edit_text(f"❌ {type(e).__name__}: {e}")
         except Exception:
-            await message.answer(f"Ошибка: {type(e).__name__}: {e}")
+            await message.answer(f"❌ {type(e).__name__}: {e}")
+        # при ошибке тоже чистим сырьё, чтобы не копить OOM
+        try:
+            cleanup_user_work(user_dir, keep_final=False, keep_banner=True)
+        except Exception:
+            pass
+        gc.collect()

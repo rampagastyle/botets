@@ -1,11 +1,12 @@
 from pathlib import Path
 import subprocess
+import shutil
 
 
 def run(cmd):
     r = subprocess.run(cmd, capture_output=True, text=True)
     if r.returncode != 0:
-        err = (r.stderr or r.stdout or "")[-2000:]
+        err = (r.stderr or r.stdout or "")[-1500:]
         raise RuntimeError(f"ffmpeg exit {r.returncode}: {err}")
 
 
@@ -28,17 +29,18 @@ def duration(path):
 
 def to_vertical(src, dst, mirror=False, width=720, height=1280):
     """
-    9:16 с размытым фоном вместо чёрных полос:
-    фон = кадр, растянутый и blur; поверх — исходник с сохранением пропорций.
+    9:16 с лёгким blur-фоном (мало RAM):
+    blur считается с уменьшенного кадра, потом апскейл.
     """
     src, dst = Path(src), Path(dst)
     dst.parent.mkdir(parents=True, exist_ok=True)
 
-    # bg: cover + blur; fg: contain; overlay center
+    # blur path: downscale → boxblur → upscale+crop  (дешевле чем gblur на full res)
     fc = (
         f"[0:v]fps=30,split=2[bg][fg];"
-        f"[bg]scale={width}:{height}:force_original_aspect_ratio=increase,"
-        f"crop={width}:{height},gblur=sigma=25,eq=brightness=-0.05[blur];"
+        f"[bg]scale=320:-2,boxblur=8:1,"
+        f"scale={width}:{height}:force_original_aspect_ratio=increase,"
+        f"crop={width}:{height},eq=brightness=-0.03[blur];"
         f"[fg]scale={width}:{height}:force_original_aspect_ratio=decrease[main];"
         f"[blur][main]overlay=(W-w)/2:(H-h)/2"
     )
@@ -51,7 +53,7 @@ def to_vertical(src, dst, mirror=False, width=720, height=1280):
             "ffmpeg",
             "-y",
             "-threads",
-            "2",
+            "1",
             "-i",
             str(src),
             "-filter_complex",
@@ -82,7 +84,6 @@ def to_vertical(src, dst, mirror=False, width=720, height=1280):
 
 
 def insert_banner_center(src, banner, dst):
-    """Баннер по центру ролика (замена среднего сегмента)."""
     src, banner, dst = Path(src), Path(banner), Path(dst)
     dst.parent.mkdir(parents=True, exist_ok=True)
 
@@ -94,12 +95,9 @@ def insert_banner_center(src, banner, dst):
     end_ban = min(d_main, start + d_ban)
     d_ban = max(0.1, end_ban - start)
 
-    t0 = 0.0
-    t1 = round(start, 3)
-    t2 = round(end_ban, 3)
-    t3 = round(d_main, 3)
+    t0, t1 = 0.0, round(start, 3)
+    t2, t3 = round(end_ban, 3), round(d_main, 3)
     db = round(d_ban, 3)
-
     w, h = 720, 1280
 
     fc = (
@@ -143,7 +141,7 @@ def insert_banner_center(src, banner, dst):
             "ffmpeg",
             "-y",
             "-threads",
-            "2",
+            "1",
             "-i",
             str(src),
             "-i",
@@ -208,7 +206,7 @@ def split_video(src, out_dir, chunk_seconds=30):
             "ffmpeg",
             "-y",
             "-threads",
-            "2",
+            "1",
             "-i",
             str(src),
             "-c",
@@ -225,3 +223,33 @@ def split_video(src, out_dir, chunk_seconds=30):
         ]
     )
     return sorted(out_dir.glob("part_*.mp4"))
+
+
+def cleanup_paths(*paths):
+    for p in paths:
+        p = Path(p)
+        try:
+            if p.is_file():
+                p.unlink(missing_ok=True)
+            elif p.is_dir():
+                shutil.rmtree(p, ignore_errors=True)
+        except OSError:
+            pass
+
+
+def cleanup_user_work(user_dir: Path, keep_final: bool = True, keep_banner: bool = True):
+    """Удаляет сырьё и промежуточные файлы, освобождает диск/inode."""
+    user_dir = Path(user_dir)
+    for name in ("raw", "raw_parts"):
+        cleanup_paths(user_dir / name)
+    processed = user_dir / "processed"
+    if processed.exists():
+        for p in processed.glob("v_*.mp4"):
+            cleanup_paths(p)
+        if not keep_final:
+            cleanup_paths(processed / "final")
+            for p in processed.glob("**/*"):
+                if p.is_file():
+                    cleanup_paths(p)
+    if not keep_banner:
+        cleanup_paths(user_dir / "banner")
