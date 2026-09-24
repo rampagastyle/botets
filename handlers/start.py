@@ -1,158 +1,73 @@
-from aiogram import Router
+from aiogram import Router, F
 from aiogram.filters import Command
 from aiogram.types import Message, ReplyKeyboardMarkup, KeyboardButton
 
 from config import is_admin
 from services.whitelist import is_allowed
+from services.i18n import t, lang
 
 router = Router()
-
-BOT_NAME = "VideoProcessing"
-BOT_VERSION = "v13"
-SUPPORT = "@classismfact"
+BOT_NAME = 'VideoProcessing'
+BOT_VERSION = 'v14'
+SUPPORT = '@classismfact'
 
 
 def main_kb(user_id=None):
+    uid = user_id or 0
     rows = [
-        [KeyboardButton(text="⚙️ Настройки"), KeyboardButton(text="⏱ Длина")],
-        [KeyboardButton(text="🎞 Качество"), KeyboardButton(text="🎬 Баннер")],
-        [KeyboardButton(text="🪞 Mirror"), KeyboardButton(text="📝 Caption")],
-        [KeyboardButton(text="📦 Все части"), KeyboardButton(text="🔁 Последние")],
-        [KeyboardButton(text="ℹ️ О проекте")],
+        [KeyboardButton(text=t(uid, 'menu_settings')), KeyboardButton(text=t(uid, 'menu_length'))],
+        [KeyboardButton(text=t(uid, 'menu_quality')), KeyboardButton(text=t(uid, 'menu_banner'))],
+        [KeyboardButton(text=t(uid, 'menu_watermark')), KeyboardButton(text=t(uid, 'menu_subtitles'))],
+        [KeyboardButton(text=t(uid, 'menu_mirror')), KeyboardButton(text=t(uid, 'menu_caption'))],
+        [KeyboardButton(text=t(uid, 'menu_all')), KeyboardButton(text=t(uid, 'menu_last'))],
+        [KeyboardButton(text=t(uid, 'menu_language')), KeyboardButton(text=t(uid, 'menu_about'))],
     ]
     if user_id and is_admin(user_id):
-        rows.append([KeyboardButton(text="👥 Whitelist")])
+        rows.append([KeyboardButton(text='👥 Whitelist')])
     return ReplyKeyboardMarkup(keyboard=rows, resize_keyboard=True)
 
 
 def denied_text(user_id):
+    return (f'━━━━━━━━━━━━━━━━━━━━\n🔒  <b>{BOT_NAME}</b> · {BOT_VERSION}\n'
+            f'━━━━━━━━━━━━━━━━━━━━\n\nДоступ только по whitelist.\n\n'
+            f'Ваш ID: <code>{user_id}</code>\n\nТехподдержка: {SUPPORT}\n━━━━━━━━━━━━━━━━━━━━')
+
+
+def about_text(user_id):
+    en = lang(user_id) == 'en'
+    if en:
+        return (
+            f'━━━━━━━━━━━━━━━━━━━━\n🎬 <b>{BOT_NAME}</b> · {BOT_VERSION}\n━━━━━━━━━━━━━━━━━━━━\n\n'
+            '<b>What it does</b>\nCuts long videos into vertical 9:16 clips, adds a soft blurred background, optional banner, watermark and subtitles.\n\n'
+            '<b>Low-load design</b>\n• one processing job at a time\n• FFmpeg uses one thread\n• source captions are preferred over local speech recognition\n• watermark and subtitles are burned during the same encode\n• temporary files are deleted as soon as possible\n• download quality is capped at 1080p\n\n'
+            '<b>Commands</b>\n/quality 480|720|1080\n/clip 15|30|45|60\n/watermark text — set watermark\n/watermark off — remove watermark\n/subtitles off — disable\n/subtitles source — use source captions\n/subtitles ai — optional AI transcription via API\n/language ru|en — interface language\n/banner — banner instructions\n/mirror — mirror\n/caption text — Telegram caption\n/sendall — send all parts\n/last — resend last parts\n/cleanup — clean temporary files\n\nSupport: ' + SUPPORT + '\n━━━━━━━━━━━━━━━━━━━━'
+        )
     return (
-        f"━━━━━━━━━━━━━━━━━━━━\n"
-        f"🔒  <b>{BOT_NAME}</b>  ·  {BOT_VERSION}\n"
-        f"━━━━━━━━━━━━━━━━━━━━\n\n"
-        f"Доступ только по whitelist.\n\n"
-        f"Ваш ID: <code>{user_id}</code>\n\n"
-        f"Техподдержка и покупка доступа:\n"
-        f"👉 {SUPPORT}\n\n"
-        f"━━━━━━━━━━━━━━━━━━━━"
+        f'━━━━━━━━━━━━━━━━━━━━\n🎬 <b>{BOT_NAME}</b> · {BOT_VERSION}\n━━━━━━━━━━━━━━━━━━━━\n\n'
+        '<b>Что делает</b>\nНарезает длинные ролики в вертикальные 9:16 клипы, добавляет мягкий blur-фон, баннер, водяной знак и субтитры.\n\n'
+        '<b>Система с низкой нагрузкой</b>\n• только одна обработка одновременно\n• FFmpeg использует один поток\n• сначала используются субтитры источника вместо локального распознавания\n• водяной знак и субтитры встраиваются в тот же encode\n• временные файлы удаляются сразу после этапа\n• скачивание ограничено 1080p\n\n'
+        '<b>Команды</b>\n/quality 480|720|1080\n/clip 15|30|45|60\n/watermark текст — установить водяной знак\n/watermark off — убрать водяной знак\n/subtitles off — выключить\n/subtitles source — субтитры из источника\n/subtitles ai — опциональная AI-транскрипция через API\n/language ru|en — язык интерфейса\n/banner — инструкция по баннеру\n/mirror — зеркало\n/caption текст — подпись Telegram\n/sendall — отправлять все части\n/last — последние части\n/cleanup — очистка\n\nПоддержка: ' + SUPPORT + '\n━━━━━━━━━━━━━━━━━━━━'
     )
 
 
-def about_text():
-    return (
-        f"━━━━━━━━━━━━━━━━━━━━\n"
-        f"🎬  <b>{BOT_NAME}</b>  ·  {BOT_VERSION}\n"
-        f"━━━━━━━━━━━━━━━━━━━━\n\n"
-        f"<b>Что это</b>\n"
-        f"Бот для нарезки длинных роликов в короткие вертикальные "
-        f"клипы (9:16) и вставки рекламного <b>баннера-видео</b>.\n\n"
-        f"━━━━━━━━━━━━━━━━━━━━\n"
-        f"<b>С чего начать</b>\n"
-        f"1. При необходимости загрузите баннер.\n"
-        f"2. В «⚙️ Настройки» выберите длину куска.\n"
-        f"3. Нажмите «🎞 Качество» и выберите 480p / 720p / 1080p.\n"
-        f"4. Отправьте <b>ссылку</b> на ролик.\n"
-        f"5. Дождитесь обработки и забирайте части.\n\n"
-        f"<b>Качество</b>\n"
-        f"• 480p — самый экономный режим для бесплатного хостинга.\n"
-        f"• 720p — компромисс между качеством и нагрузкой.\n"
-        f"• 1080p — максимальный выход, 1080×1920.\n"
-        f"При выборе качества бот не скачивает исходник выше этого "
-        f"разрешения и никогда не запрашивает источник выше 1080p.\n\n"
-        f"<b>Фон</b>\n"
-        f"Вместо чёрных полос используется мягкий blur из самого видео. "
-        f"Размытая копия считается в уменьшенном размере, чтобы не "
-        f"раздувать потребление памяти на Railway.\n\n"
-        f"<b>Railway / RAM</b>\n"
-        f"Обработка идёт последовательно: один ffmpeg-процесс за раз, "
-        f"1 поток кодирования и очистка временных файлов после каждого "
-        f"этапа. Это уменьшает пик RAM, но 1080p всё равно работает "
-        f"медленнее на слабом тарифе.\n\n"
-        f"━━━━━━━━━━━━━━━━━━━━\n"
-        f"<b>Кнопки</b>\n\n"
-        f"⚙️ <b>Настройки</b> — все параметры.\n"
-        f"🎞 <b>Качество</b> — 480p / 720p / 1080p.\n"
-        f"⏱ <b>Длина</b> — 15 / 30 / 45 / 60 сек.\n"
-        f"🎬 <b>Баннер</b> — загрузка видео-баннера.\n"
-        f"🪞 <b>Mirror</b> — зеркальное отражение.\n"
-        f"📦 <b>Все части</b> — отправлять все части сразу.\n"
-        f"🔁 <b>Последние</b> — повторно отправить последнюю обработку.\n\n"
-        f"━━━━━━━━━━━━━━━━━━━━\n"
-        f"<b>Команды</b>\n\n"
-        f"/start · /help — главное меню\n"
-        f"/settings — настройки\n"
-        f"/quality — качество\n"
-        f"/quality 1080 — сразу выбрать 1080p\n"
-        f"/clip 30 — длина куска\n"
-        f"/banner — как загрузить баннер\n"
-        f"/mirror — зеркало вкл/выкл\n"
-        f"/caption текст — свой текст под видео\n"
-        f"/caption reset — сбросить caption\n"
-        f"/sendall — режим «слать все части»\n"
-        f"/last — последние части снова\n"
-        f"/cleanup — удалить временные файлы\n"
-        f"/myid — ваш Telegram ID\n"
-        f"/whitelist · /allow · /deny — доступ (админ)\n\n"
-        f"━━━━━━━━━━━━━━━━━━━━\n"
-        f"Поддержка: {SUPPORT}\n"
-        f"━━━━━━━━━━━━━━━━━━━━"
-    )
-
-
-@router.message(Command("start", "help"))
+@router.message(Command('start', 'help'))
 async def start(message: Message):
-    if not is_allowed(message.from_user.id):
-        return await message.answer(
-            denied_text(message.from_user.id),
-            parse_mode="HTML",
-        )
-
-    admin_line = ""
-    if is_admin(message.from_user.id):
-        admin_line = "👑 Админ: /whitelist · /allow · /deny\n"
-
+    uid = message.from_user.id
+    if not is_allowed(uid):
+        return await message.answer(denied_text(uid), parse_mode='HTML')
     await message.answer(
-        f"━━━━━━━━━━━━━━━━━━━━\n"
-        f"🎬  <b>{BOT_NAME}</b>  ·  {BOT_VERSION}\n"
-        f"━━━━━━━━━━━━━━━━━━━━\n\n"
-        f"Нарезка видео · 9:16 · blur-фон · до 1080p\n"
-        f"Для любых кампаний и контента.\n\n"
-        f"📎 Отправьте <b>ссылку</b> на ролик\n"
-        f"   или откройте «ℹ️ О проекте»\n\n"
-        f"{admin_line}"
-        f"Поддержка: {SUPPORT}\n"
-        f"━━━━━━━━━━━━━━━━━━━━",
-        parse_mode="HTML",
-        reply_markup=main_kb(message.from_user.id),
+        f'━━━━━━━━━━━━━━━━━━━━\n🎬 <b>{BOT_NAME}</b> · {BOT_VERSION}\n━━━━━━━━━━━━━━━━━━━━\n\n'
+        + ('Vertical clips · 9:16 · blur · up to 1080p' if lang(uid) == 'en' else 'Нарезка видео · 9:16 · blur-фон · до 1080p')
+        + '\n\n' + ('Send a video link or use the buttons below.' if lang(uid) == 'en' else 'Отправьте ссылку на видео или используйте кнопки ниже.')
+        + '\n━━━━━━━━━━━━━━━━━━━━',
+        parse_mode='HTML', reply_markup=main_kb(uid)
     )
 
 
-@router.message(Command("about", "info", "project"))
+@router.message(Command('about', 'info', 'project'))
+@router.message(F.text.in_({'ℹ️ О проекте', 'ℹ️ About'}))
 async def about_cmd(message: Message):
-    if not is_allowed(message.from_user.id):
-        return await message.answer(
-            denied_text(message.from_user.id),
-            parse_mode="HTML",
-        )
-
-    text = about_text()
-    if len(text) <= 4000:
-        await message.answer(
-            text,
-            parse_mode="HTML",
-            disable_web_page_preview=True,
-        )
-    else:
-        mid = text.find("<b>Команды</b>")
-        if mid == -1:
-            mid = len(text) // 2
-        await message.answer(
-            text[:mid],
-            parse_mode="HTML",
-            disable_web_page_preview=True,
-        )
-        await message.answer(
-            "━━━━━━━━━━━━━━━━━━━━\n" + text[mid:],
-            parse_mode="HTML",
-            disable_web_page_preview=True,
-        )
+    uid = message.from_user.id
+    if not is_allowed(uid):
+        return await message.answer(denied_text(uid), parse_mode='HTML')
+    await message.answer(about_text(uid), parse_mode='HTML', disable_web_page_preview=True)
