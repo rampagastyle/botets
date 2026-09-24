@@ -136,7 +136,12 @@ def token_path(user_id: int | str) -> Path:
 
 
 def _flow(state: str | None = None) -> Flow:
-    flow = Flow.from_client_config(_client_config(), scopes=SCOPES, state=state)
+    flow = Flow.from_client_config(
+        _client_config(),
+        scopes=SCOPES,
+        state=state,
+        autogenerate_code_verifier=False,
+    )
     flow.redirect_uri = _redirect_uri()
     return flow
 
