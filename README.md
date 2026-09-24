@@ -60,6 +60,7 @@ Railway variables:
 
 ```env
 PUBLIC_BASE_URL=https://botets-production.up.railway.app
+# Не задавай YOUTUBE_REDIRECT_URI, если он содержит старый адрес.
 OAUTH_STATE_SECRET=long-random-secret
 YOUTUBE_CLIENT_SECRET_JSON={PASTE_THE_CONTENT_OF_client_secret.json_HERE}
 ```
@@ -99,3 +100,11 @@ https://botets-production.up.railway.app/oauth/youtube/callback
 ```
 
 В Railway нельзя оставлять `YOUTUBE_CLIENT_SECRET=JSON_OT_Google_OAuth` или другой текст-заглушку. Нужно вставить содержимое файла `client_secret.json`, который скачан из Google Cloud, в переменную `YOUTUBE_CLIENT_SECRET_JSON`. Нужен OAuth client типа **Web application**.
+
+
+### Важно: redirect_uri_mismatch
+
+Для этого проекта callback должен быть ровно:
+`https://botets-production.up.railway.app/oauth/youtube/callback`
+
+В Railway задай `PUBLIC_BASE_URL=https://botets-production.up.railway.app`. Если у тебя уже есть `YOUTUBE_REDIRECT_URI` со старым адресом, удали эту переменную. В Google Cloud в Authorized redirect URIs оставь ровно тот же callback. Бот показывает фактический callback в меню `/youtube`.

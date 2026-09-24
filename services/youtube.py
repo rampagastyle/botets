@@ -20,17 +20,25 @@ STATE_TTL = 15 * 60
 
 
 def _redirect_uri() -> str:
-    explicit = os.getenv("YOUTUBE_REDIRECT_URI", "").strip()
-    if explicit:
-        return explicit.rstrip("/")
+    # Prefer the public Railway URL. This prevents a stale YOUTUBE_REDIRECT_URI
+    # variable from silently causing Google's redirect_uri_mismatch.
     base = os.getenv("PUBLIC_BASE_URL", "").strip().rstrip("/")
     if not base:
-        raise RuntimeError(
-            "Не задан PUBLIC_BASE_URL. Для твоего Railway укажи: "
-            "https://botets-production.up.railway.app"
-        )
+        domain = os.getenv("RAILWAY_PUBLIC_DOMAIN", "").strip().strip("/")
+        if domain:
+            base = domain if domain.startswith("http") else "https://" + domain
+    if not base:
+        explicit = os.getenv("YOUTUBE_REDIRECT_URI", "").strip()
+        if explicit:
+            return explicit.rstrip("/")
+    if not base:
+        # Current project fallback; PUBLIC_BASE_URL should still be set in Railway.
+        base = "https://botets-production.up.railway.app"
     return base + "/oauth/youtube/callback"
 
+
+def redirect_uri() -> str:
+    return _redirect_uri()
 
 def _client_config() -> dict:
     """Load Google Web OAuth client JSON.
