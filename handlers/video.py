@@ -80,7 +80,7 @@ async def video_link(message: Message):
 
         async with PROCESS_SEMAPHORE:
             await status.edit_text('⬇️ Скачивание…')
-            src = await asyncio.to_thread(download, message.text.strip(), raw, quality, progress_callback, subtitle_lang)
+            src = await asyncio.to_thread(download, message.text.strip(), raw, quality, progress_callback, subtitle_lang, subtitle_mode == 'source')
             src = Path(src)
             if not src.exists():
                 raise RuntimeError('Скачанный файл не найден.')

@@ -76,7 +76,7 @@ to Authorized redirect URIs. Enable YouTube Data API v3. Then open `/youtube` in
 The bot defaults to `private` uploads. You can switch to `unlisted` or `public` in the YouTube menu.
 
 ### YouTube download reliability
-The Docker image includes Node.js because current YouTube delivery can require a JavaScript runtime for player challenges. yt-dlp is configured to download only the selected quality, use one fragment at a time, and optionally use `credentials/cookies.txt` when provided. If YouTube changes its delivery, update `yt-dlp` before changing the rest of the bot.
+The Docker image includes Node.js because current YouTube delivery can require a JavaScript runtime for player challenges. yt-dlp downloads only the selected quality, uses one fragment at a time, and lets current yt-dlp choose its default YouTube client before trying two lightweight fallbacks. Optional `YTDLP_COOKIES` can provide a fresh Netscape-format cookies.txt when YouTube blocks the Railway IP. Use cookies only for videos your account is allowed to access.
 
 Only download/re-upload videos you have permission to use.
 
