@@ -1,35 +1,18 @@
 import os
 from pathlib import Path
-
 from dotenv import load_dotenv
 
 BASE_DIR = Path(__file__).resolve().parent
 load_dotenv(BASE_DIR / ".env")
 
 BOT_TOKEN = os.getenv("BOT_TOKEN", "")
+MAX_FILE_SIZE = int(os.getenv("MAX_FILE_SIZE", str(2 * 1024**3)))
 
-# Лимит входного файла. На бесплатном хостинге лучше не разрешать
-# бесконечно большие исходники.
-def _env_int(name: str, default: int) -> int:
-    raw = os.getenv(name, "")
-    try:
-        return int(str(raw).strip() or default)
-    except (TypeError, ValueError):
-        return int(default)
+# Админы — могут менять whitelist (через env, через запятую)
+ADMIN_IDS = {x.strip() for x in os.getenv("ADMIN_IDS", "").split(",") if x.strip()}
 
-MAX_FILE_SIZE = _env_int("MAX_FILE_SIZE", 2 * 1024 * 1024 * 1024)  # 2 GiB
-
-ADMIN_IDS = {
-    x.strip()
-    for x in os.getenv("ADMIN_IDS", "").split(",")
-    if x.strip()
-}
-
-ENV_WHITELIST = {
-    x.strip()
-    for x in os.getenv("WHITELIST", "").split(",")
-    if x.strip()
-}
+# Стартовый whitelist из env (дополняет файл data/whitelist.txt)
+ENV_WHITELIST = {x.strip() for x in os.getenv("WHITELIST", "").split(",") if x.strip()}
 
 WORK_DIR = BASE_DIR / "data"
 USERS_FILE = WORK_DIR / "users.txt"

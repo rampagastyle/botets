@@ -5,7 +5,6 @@ from pathlib import Path
 
 from aiogram import Bot, Dispatcher
 from aiogram.client.session.aiohttp import AiohttpSession
-from aiohttp import web
 
 from config import BOT_TOKEN
 from handlers.start import router as start_router
@@ -13,8 +12,6 @@ from handlers.settings import router as settings_router
 from handlers.video import router as video_router
 from handlers.upload import router as upload_router
 from handlers.admin import router as admin_router
-from handlers.youtube import router as youtube_router
-from services.youtube import handle_callback
 from services.storage import ensure_storage
 
 
@@ -59,32 +56,7 @@ async def main():
     dp.include_router(video_router)
     dp.include_router(upload_router)
     dp.include_router(admin_router)
-    dp.include_router(youtube_router)
-    async def youtube_callback(request):
-        code = request.query.get("code", "")
-        state = request.query.get("state", "")
-        error = request.query.get("error")
-        if error:
-            return web.Response(text=f"YouTube authorization cancelled: {error}", content_type="text/plain")
-        try:
-            user_id = await asyncio.to_thread(handle_callback, code, state)
-            return web.Response(
-                text=f"YouTube connected for Telegram user {user_id}. You can close this page and return to the bot.",
-                content_type="text/plain",
-            )
-        except Exception as exc:
-            return web.Response(text=f"Authorization error: {exc}", content_type="text/plain", status=400)
-
-    web_app = web.Application()
-    web_app.router.add_get("/oauth/youtube/callback", youtube_callback)
-    runner = web.AppRunner(web_app)
-    await runner.setup()
-    site = web.TCPSite(runner, "0.0.0.0", int(os.getenv("PORT", "8080")))
-    await site.start()
-    try:
-        await dp.start_polling(bot)
-    finally:
-        await runner.cleanup()
+    await dp.start_polling(bot)
 
 
 if __name__ == "__main__":

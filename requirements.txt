@@ -1,9 +1,7 @@
 aiogram>=3.0,<4
 python-dotenv>=1.0
-yt-dlp>=2025.1.0
+yt-dlp
 google-api-python-client
 google-auth-oauthlib
 google-auth-httplib2
 aiohttp
-
-google-genai>=1.40,<2
