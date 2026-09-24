@@ -1,48 +1,174 @@
-# Video bot — нарезка + баннер CSDOG
+# VideoProcessing — Telegram video bot
 
-Telegram-бот: скачивание (yt-dlp), вертикаль 9:16, нарезка 15/30/45/60 сек, вставка баннера по центру.
+Бот скачивает ролики через `yt-dlp`, режет их на части, переводит в вертикальный 9:16 и при необходимости вставляет видео-баннер.
+
+## Что изменилось в v13
+
+### Выбор качества
+
+В меню появилась кнопка **🎞 Качество**:
+
+- **480p** — 480×854, минимальная нагрузка;
+- **720p** — 720×1280;
+- **1080p** — 1080×1920, максимальный выход.
+
+Максимум жёстко ограничен **1080p**. Даже если исходник 1440p/2160p, бот не скачивает его выше выбранного качества.
+
+Команды:
+
+```text
+/quality
+/quality 480
+/quality 720
+/quality 1080
+```
+
+### Blur вместо чёрных полос
+
+Видео помещается в 9:16. Пустые области заполняются увеличенной копией текущего кадра с мягким blur.
+
+Чтобы не раздувать RAM:
+
+1. фон уменьшается примерно в 4 раза;
+2. blur считается на уменьшенной копии;
+3. маленький фон растягивается до разрешения результата;
+4. оригинальный кадр помещается поверх.
+
+### Защита от нагрузки на бесплатном Railway
+
+- один ffmpeg-процесс обрабатывает один кусок;
+- `threads=1` и `filter_threads=1`;
+- после каждого куска удаляется исходный временный файл;
+- после скачивания длинный исходник удаляется до начала кодирования;
+- исходник ограничен `MAX_FILE_SIZE`;
+- скачивание ограничено выбранным качеством и максимумом 1080p;
+- обработка выполняется последовательно, без параллельного рендера всех частей.
+
+**Важно:** 1080p всё равно требует больше CPU и времени. Ограничение потоков уменьшает пик нагрузки, но не делает 1080p бесплатным по ресурсам.
 
 ## Локальный запуск
 
 ```bash
 python -m venv .venv
-# Windows: .venv\Scripts\activate
+```
+
+Windows:
+
+```bash
+.venv\Scripts\activate
+```
+
+Linux/macOS:
+
+```bash
+source .venv/bin/activate
+```
+
+Установка:
+
+```bash
 pip install -r requirements.txt
-# нужен ffmpeg в PATH
-echo BOT_TOKEN=... > .env
+```
+
+Нужен `ffmpeg` в `PATH`.
+
+Создайте `.env`:
+
+```env
+BOT_TOKEN=YOUR_TELEGRAM_BOT_TOKEN
+ADMIN_IDS=123456789
+WHITELIST=123456789
+
+# Необязательно. По умолчанию 1 ГБ.
+MAX_FILE_SIZE=1073741824
+
+# Необязательно:
+# YTDLP_COOKIES=...
+# YOUTUBE_CLIENT_SECRET=...
+# YOUTUBE_TOKEN=...
+```
+
+Запуск:
+
+```bash
 python main.py
 ```
 
-## Команды
-
-- Ссылка http(s) — скачать и обработать
-- `/settings` — настройки
-- `/clip` — длина куска
-- `/banner` — как загрузить баннер
-- Файл с подписью `баннер` — сохранить MP4 баннера
-- `/mirror` — зеркало
-
-Баннер CSDOG: https://t.me/csdogTikTok/62  
-Правила: https://telegra.ph/Usloviya-bannerov-csdog-09-08
-
 ## Railway
 
-1. Dockerfile уже есть (python + ffmpeg)
-2. Variables: `BOT_TOKEN`, при необходимости `YTDLP_COOKIES`
-3. Локальный бот выключить (один polling)
+Dockerfile уже устанавливает `ffmpeg`.
 
-YouTube с IP облака часто требует cookies и всё равно может резать. RuTube/VK обычно стабильнее.
+Переменные Railway:
+
+```text
+BOT_TOKEN
+ADMIN_IDS
+WHITELIST
+MAX_FILE_SIZE
+YTDLP_COOKIES
+```
+
+Если используете cookies, можно передать содержимое `cookies.txt` через `YTDLP_COOKIES`.
+
+Не запускайте две копии бота с одним Telegram Bot Token одновременно: обе начнут polling.
+
+## Основные команды
+
+- ссылка `http(s)` — скачать и обработать;
+- `/settings` — настройки;
+- `/quality` — качество;
+- `/quality 1080` — выбрать 1080p;
+- `/clip` — длина части;
+- `/banner` — инструкция по баннеру;
+- `/mirror` — зеркало;
+- `/sendall` — отправлять все части;
+- `/last` — повторно отправить последнюю обработку;
+- `/cleanup` — очистить временные файлы.
+
+## Ограничение отправки
+
+Бот использует внутренний лимит около **45 МБ на часть**, чтобы оставить запас относительно ограничений Telegram.
+
+Если 1080p-часть получилась слишком большой, уменьшите длину части или выберите 720p.
 
 ## TikTok drafts
 
-Только через официальный Content Posting API (`video.upload` → inbox). Заглушка в `services/tiktok.py`.
+Используется официальный Content Posting API.
 
-## TikTok drafts
+Команды:
 
-1. Create app: https://developers.tiktok.com
-2. Product: Content Posting API, scope `video.upload`
-3. OAuth → user `access_token`
-4. In bot: `/settoken act.xxx`
-5. After processing a video: `/todraft`
+```text
+/tiktok
+/settoken act.xxxxx
+/todraft
+```
 
-See `/tiktok` in the bot for steps.
+Для работы нужен собственный TikTok Developer App и соответствующий access token.
+
+## YouTube
+
+В проекте оставлена загрузка через YouTube Data API/OAuth. Для запуска на сервере заранее подготовьте credentials.
+
+## Структура
+
+```text
+handlers/
+  admin.py
+  settings.py
+  start.py
+  upload.py
+  video.py
+
+services/
+  downloader.py
+  processor.py
+  storage.py
+  tiktok.py
+  whitelist.py
+  youtube.py
+
+config.py
+main.py
+Dockerfile
+requirements.txt
+```
