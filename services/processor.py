@@ -17,7 +17,7 @@ def quality_dims(quality):
         quality = int(quality)
     except (TypeError, ValueError):
         quality = DEFAULT_QUALITY
-    quality = min(MAX_QUALITY, max(480, quality))
+    quality = min((480, 720, 1080), key=lambda x: abs(x - quality))
     return QUALITY_DIMS[quality]
 
 

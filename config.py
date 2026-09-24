@@ -10,9 +10,14 @@ BOT_TOKEN = os.getenv("BOT_TOKEN", "")
 
 # Лимит входного файла. На бесплатном хостинге лучше не разрешать
 # бесконечно большие исходники.
-MAX_FILE_SIZE = int(
-    os.getenv("MAX_FILE_SIZE", str(512 * 1024 * 1024))
-)
+def _env_int(name: str, default: int) -> int:
+    raw = os.getenv(name, "")
+    try:
+        return int(str(raw).strip() or default)
+    except (TypeError, ValueError):
+        return int(default)
+
+MAX_FILE_SIZE = _env_int("MAX_FILE_SIZE", 512 * 1024 * 1024)
 
 ADMIN_IDS = {
     x.strip()

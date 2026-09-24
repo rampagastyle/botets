@@ -62,9 +62,17 @@ async def video_link(message: Message):
 
     try:
         s = get_settings(uid)
-        quality = int(s.get('quality') or 480)
+        try:
+            quality = int(s.get('quality') or 480)
+        except (TypeError, ValueError):
+            quality = 480
+        if quality not in (480, 720, 1080):
+            quality = 480
         width, height = quality_dims(quality)
-        clip_sec = int(s.get('clip_seconds') or 15)
+        try:
+            clip_sec = int(s.get('clip_seconds') or 15)
+        except (TypeError, ValueError):
+            clip_sec = 15
         if clip_sec not in (15, 30, 45, 60):
             clip_sec = 15
         mirror = bool(s.get('mirror'))
@@ -84,7 +92,9 @@ async def video_link(message: Message):
             src = Path(src)
             if not src.exists():
                 raise RuntimeError('Скачанный файл не найден.')
-            if src.stat().st_size > MAX_FILE_SIZE:
+            max_bytes = int(MAX_FILE_SIZE) if MAX_FILE_SIZE is not None else 0
+            file_size = int(src.stat().st_size)
+            if max_bytes > 0 and file_size > max_bytes:
                 cleanup_paths(src)
                 return await status.edit_text('⚠️ Файл слишком большой.')
 
