@@ -53,6 +53,9 @@ def get_settings(user_id):
             x.setdefault("quality", DEFAULT_QUALITY)
             x.setdefault("last_parts", [])
             x.setdefault("last_sent_index", 0)
+            x.setdefault("language", "ru")
+            x.setdefault("watermark", "")
+            x.setdefault("subtitles", "source")
             return x
 
     return {
@@ -67,6 +70,9 @@ def get_settings(user_id):
         "quality": DEFAULT_QUALITY,
         "last_parts": [],
         "last_sent_index": 0,
+        "language": "ru",
+        "watermark": "",
+        "subtitles": "source",
     }
 
 
