@@ -53,9 +53,13 @@ def get_settings(user_id):
             x.setdefault("quality", DEFAULT_QUALITY)
             x.setdefault("last_parts", [])
             x.setdefault("last_sent_index", 0)
+            x.setdefault("last_metadata", [])
             x.setdefault("language", "ru")
             x.setdefault("watermark", "")
             x.setdefault("subtitles", "source")
+            x.setdefault("gemini_analysis", True)
+            x.setdefault("youtube_auto", False)
+            x.setdefault("youtube_privacy", "private")
             return x
 
     return {
@@ -70,9 +74,13 @@ def get_settings(user_id):
         "quality": DEFAULT_QUALITY,
         "last_parts": [],
         "last_sent_index": 0,
+        "last_metadata": [],
         "language": "ru",
         "watermark": "",
         "subtitles": "source",
+        "gemini_analysis": True,
+        "youtube_auto": False,
+        "youtube_privacy": "private",
     }
 
 

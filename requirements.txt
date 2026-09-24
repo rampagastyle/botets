@@ -6,4 +6,4 @@ google-auth-oauthlib
 google-auth-httplib2
 aiohttp
 
-openai>=1.0
+google-genai>=1.40,<2

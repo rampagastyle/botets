@@ -8,7 +8,7 @@ from services.i18n import t, lang
 
 router = Router()
 BOT_NAME = 'VideoProcessing'
-BOT_VERSION = 'v14'
+BOT_VERSION = 'v15'
 SUPPORT = '@classismfact'
 
 
@@ -20,7 +20,8 @@ def main_kb(user_id=None):
         [KeyboardButton(text=t(uid, 'menu_watermark')), KeyboardButton(text=t(uid, 'menu_subtitles'))],
         [KeyboardButton(text=t(uid, 'menu_mirror')), KeyboardButton(text=t(uid, 'menu_caption'))],
         [KeyboardButton(text=t(uid, 'menu_all')), KeyboardButton(text=t(uid, 'menu_last'))],
-        [KeyboardButton(text=t(uid, 'menu_language')), KeyboardButton(text=t(uid, 'menu_about'))],
+        [KeyboardButton(text=t(uid, 'menu_language')), KeyboardButton(text=t(uid, 'menu_youtube'))],
+        [KeyboardButton(text=t(uid, 'menu_about'))],
     ]
     if user_id and is_admin(user_id):
         rows.append([KeyboardButton(text='👥 Whitelist')])
@@ -40,13 +41,13 @@ def about_text(user_id):
             f'━━━━━━━━━━━━━━━━━━━━\n🎬 <b>{BOT_NAME}</b> · {BOT_VERSION}\n━━━━━━━━━━━━━━━━━━━━\n\n'
             '<b>What it does</b>\nCuts long videos into vertical 9:16 clips, adds a soft blurred background, optional banner, watermark and subtitles.\n\n'
             '<b>Low-load design</b>\n• one processing job at a time\n• FFmpeg uses one thread\n• source captions are preferred over local speech recognition\n• watermark and subtitles are burned during the same encode\n• temporary files are deleted as soon as possible\n• download quality is capped at 1080p\n\n'
-            '<b>Commands</b>\n/quality 480|720|1080\n/clip 15|30|45|60\n/watermark text — set watermark\n/watermark off — remove watermark\n/subtitles off — disable\n/subtitles source — use source captions\n/subtitles ai — optional AI transcription via API\n/language ru|en — interface language\n/banner — banner instructions\n/mirror — mirror\n/caption text — Telegram caption\n/sendall — send all parts\n/last — resend last parts\n/cleanup — clean temporary files\n\nSupport: ' + SUPPORT + '\n━━━━━━━━━━━━━━━━━━━━'
+            '<b>Commands</b>\n/youtube — connect and auto-upload Shorts\n/gemini on|off — AI video analysis\n/quality 480|720|1080\n/clip 15|30|45|60\n/watermark text — set watermark\n/watermark off — remove watermark\n/subtitles off — disable\n/subtitles source — use source captions\n/subtitles ai — optional AI transcription via API\n/language ru|en — interface language\n/banner — banner instructions\n/mirror — mirror\n/caption text — Telegram caption\n/sendall — send all parts\n/last — resend last parts\n/cleanup — clean temporary files\n\nSupport: ' + SUPPORT + '\n━━━━━━━━━━━━━━━━━━━━'
         )
     return (
         f'━━━━━━━━━━━━━━━━━━━━\n🎬 <b>{BOT_NAME}</b> · {BOT_VERSION}\n━━━━━━━━━━━━━━━━━━━━\n\n'
         '<b>Что делает</b>\nНарезает длинные ролики в вертикальные 9:16 клипы, добавляет мягкий blur-фон, баннер, водяной знак и субтитры.\n\n'
         '<b>Система с низкой нагрузкой</b>\n• только одна обработка одновременно\n• FFmpeg использует один поток\n• сначала используются субтитры источника вместо локального распознавания\n• водяной знак и субтитры встраиваются в тот же encode\n• временные файлы удаляются сразу после этапа\n• скачивание ограничено 1080p\n\n'
-        '<b>Команды</b>\n/quality 480|720|1080\n/clip 15|30|45|60\n/watermark текст — установить водяной знак\n/watermark off — убрать водяной знак\n/subtitles off — выключить\n/subtitles source — субтитры из источника\n/subtitles ai — опциональная AI-транскрипция через API\n/language ru|en — язык интерфейса\n/banner — инструкция по баннеру\n/mirror — зеркало\n/caption текст — подпись Telegram\n/sendall — отправлять все части\n/last — последние части\n/cleanup — очистка\n\nПоддержка: ' + SUPPORT + '\n━━━━━━━━━━━━━━━━━━━━'
+        '<b>Команды</b>\n/youtube — подключить YouTube и автозагрузку Shorts\n/gemini on|off — AI-анализ видео\n/quality 480|720|1080\n/clip 15|30|45|60\n/watermark текст — установить водяной знак\n/watermark off — убрать водяной знак\n/subtitles off — выключить\n/subtitles source — субтитры из источника\n/subtitles ai — опциональная AI-транскрипция через API\n/language ru|en — язык интерфейса\n/banner — инструкция по баннеру\n/mirror — зеркало\n/caption текст — подпись Telegram\n/sendall — отправлять все части\n/last — последние части\n/cleanup — очистка\n\nПоддержка: ' + SUPPORT + '\n━━━━━━━━━━━━━━━━━━━━'
     )
 
 

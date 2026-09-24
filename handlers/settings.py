@@ -9,6 +9,7 @@ from services.whitelist import is_allowed
 from services.storage import get_settings, save_settings, DEFAULT_CAPTION, QUALITY_OPTIONS
 from services.tiktok import set_tiktok_token, get_tiktok_token
 from services.i18n import t, lang
+from services.youtube import is_connected
 
 router = Router()
 CLIP_OPTIONS = (15, 30, 45, 60)
@@ -29,6 +30,8 @@ def settings_kb(user_id: int):
         [InlineKeyboardButton(text=f"{'●' if quality == q else '·'} {q}p", callback_data=f'quality:{q}') for q in QUALITY_OPTIONS],
         [InlineKeyboardButton(text='🇷🇺 RU', callback_data='lang:ru'), InlineKeyboardButton(text='🇬🇧 EN', callback_data='lang:en')],
         [InlineKeyboardButton(text='💬 Subtitles', callback_data='subtitles:menu')],
+        [InlineKeyboardButton(text='🤖 Gemini: ' + ('ON' if s.get('gemini_analysis', True) else 'OFF'), callback_data='gemini:toggle')],
+        [InlineKeyboardButton(text='▶️ YouTube: ' + ('connected' if is_connected(user_id) else 'not connected'), callback_data='yt:menu')],
     ]
     return InlineKeyboardMarkup(inline_keyboard=rows)
 
@@ -64,14 +67,16 @@ def _settings_text(user_id: int):
     wm = s.get('watermark') or t(user_id, 'watermark_none')
     if len(wm) > 50: wm = wm[:50] + '…'
     return (
-        f"━━━━━━━━━━━━━━━━━━━━\n{t(user_id, 'settings')} · VideoProcessing v14\n━━━━━━━━━━━━━━━━━━━━\n\n"
+        f"━━━━━━━━━━━━━━━━━━━━\n{t(user_id, 'settings')} · VideoProcessing v15\n━━━━━━━━━━━━━━━━━━━━\n\n"
         f"⏱  Длина: <b>{s.get('clip_seconds', 15)} сек</b>\n"
         f"🎞  Качество: <b>{quality}p</b>\n"
         f"💧  Водяной знак: <b>{wm}</b>\n"
         f"💬  Субтитры: <b>{sub}</b>\n"
+        f"🤖  Gemini-анализ: <b>{'вкл' if s.get('gemini_analysis', True) else 'выкл'}</b>\n"
         f"🌐  {t(user_id, 'language')}: <b>{'Русский' if lang(user_id) == 'ru' else 'English'}</b>\n"
         f"🪞  Mirror: <b>{mir}</b>\n🎬  Баннер: <b>{ban}</b>\n📦  Слать все: <b>{allp}</b>\n🎵  TikTok token: <b>{tok}</b>\n\n"
         f"📝 Caption\n<code>{cap}</code>\n\n"
+        f"▶️  YouTube: <b>{'вкл' if s.get('youtube_auto') else 'выкл'}</b> · {s.get('youtube_privacy', 'private')}\n"
         "Максимум: <b>1080×1920</b>. Один FFmpeg-процесс за раз, 1 поток.\n"
         "━━━━━━━━━━━━━━━━━━━━"
     )
@@ -126,14 +131,41 @@ async def watermark_cmd(message: Message):
     await message.answer(f'✅ Водяной знак: <b>{arg}</b>\nОн будет снизу по центру.', parse_mode='HTML')
 
 
+@router.message(Command('gemini'))
+@router.message(F.text == '🤖 Gemini')
+async def gemini_cmd(message: Message):
+    if not is_allowed(message.from_user.id): return
+    arg = (message.text or '').partition(' ')[2].strip().lower()
+    if arg in ('on', 'off'):
+        save_settings(message.from_user.id, gemini_analysis=(arg == 'on'))
+        return await message.answer('🤖 Gemini-анализ: ' + ('включён' if arg == 'on' else 'выключен'))
+    key = __import__('os').getenv('GEMINI_API_KEY', '').strip()
+    current = get_settings(message.from_user.id).get('gemini_analysis', True)
+    await message.answer(
+        f'🤖 Gemini: <b>{"ON" if current else "OFF"}</b>\n'
+        f'API key: <b>{"OK" if key else "нет"}</b>\n\n'
+        '/gemini on\n/gemini off', parse_mode='HTML'
+    )
+
+
+@router.callback_query(F.data == 'gemini:toggle')
+async def gemini_toggle_cb(call: CallbackQuery):
+    if not is_allowed(call.from_user.id): return await call.answer('Нет доступа', show_alert=True)
+    current = bool(get_settings(call.from_user.id).get('gemini_analysis', True))
+    save_settings(call.from_user.id, gemini_analysis=not current)
+    await call.answer('ON' if not current else 'OFF')
+    try: await call.message.edit_text(_settings_text(call.from_user.id), parse_mode='HTML', reply_markup=settings_kb(call.from_user.id))
+    except Exception: pass
+
+
 @router.message(Command('subtitles'))
 @router.message(F.text.in_({'💬 Субтитры', '💬 Subtitles'}))
 async def subtitles_cmd(message: Message):
     if not is_allowed(message.from_user.id): return
     arg = (message.text or '').partition(' ')[2].strip().lower()
     if arg in ('off', 'source', 'ai'):
-        if arg == 'ai' and not __import__('os').getenv('OPENAI_API_KEY'):
-            return await message.answer('⚠️ Для AI-субтитров нужен OPENAI_API_KEY. Source-субтитры работают без него.')
+        if arg == 'ai' and not __import__('os').getenv('GEMINI_API_KEY'):
+            return await message.answer('⚠️ Для AI-функций нужен GEMINI_API_KEY. Source-субтитры работают без него.')
         save_settings(message.from_user.id, subtitles=arg)
         return await message.answer(f'✅ Subtitles: <b>{arg}</b>', parse_mode='HTML')
     current = get_settings(message.from_user.id).get('subtitles', 'source')
@@ -145,8 +177,8 @@ async def subtitles_cb(call: CallbackQuery):
     mode = call.data.split(':', 1)[1]
     if mode == 'menu':
         return await call.message.answer('💬 Режим субтитров:', reply_markup=subtitles_kb(get_settings(call.from_user.id).get('subtitles', 'source')))
-    if mode == 'ai' and not __import__('os').getenv('OPENAI_API_KEY'):
-        return await call.answer('Нужен OPENAI_API_KEY', show_alert=True)
+    if mode == 'ai' and not __import__('os').getenv('GEMINI_API_KEY'):
+        return await call.answer('Нужен GEMINI_API_KEY', show_alert=True)
     if mode not in ('off', 'source', 'ai'): return await call.answer('Error', show_alert=True)
     save_settings(call.from_user.id, subtitles=mode)
     await call.answer(mode)

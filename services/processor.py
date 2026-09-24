@@ -59,10 +59,13 @@ def _vertical_blur_filter(width, height, mirror=False):
 def _decorate_filter_chain(label, watermark='', subtitle_path=None):
     filters = []
     if watermark:
+        # Keep the watermark inside the sharp foreground video, not on the blur area.
+        # Alpha is intentionally low so it does not dominate the clip.
         filters.append(
             f"drawtext=fontfile='{FONT_FILE}':text='{_text_escape(watermark)}':"
-            f'fontcolor=white:fontsize=42:bordercolor=black@0.70:borderw=2:'
-            f'x=(w-text_w)/2:y=h-text_h-55:alpha=0.92'
+            f'fontcolor=white@0.55:fontsize=38:bordercolor=black@0.35:borderw=2:'
+            f'x=(w-text_w)/2:'
+            f'y=(h-min(h,w*ih/iw))/2+min(h,w*ih/iw)-text_h-70:alpha=0.55'
         )
     if subtitle_path and Path(subtitle_path).exists():
         filters.append(f"subtitles='{_filter_path(subtitle_path)}':fontsdir='/usr/share/fonts/truetype/dejavu'")
