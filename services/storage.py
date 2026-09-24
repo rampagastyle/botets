@@ -1,11 +1,15 @@
 from pathlib import Path
 import json
+
 from config import WORK_DIR, USERS_FILE, SETTINGS_FILE, ACCOUNTS_FILE
 
 DEFAULT_CAPTION = (
     "🔥 #cs2 #csdog #csgo #counterstrike\n"
     "csdog.io"
 )
+
+DEFAULT_QUALITY = 480
+QUALITY_OPTIONS = (480, 720, 1080)
 
 
 def ensure_storage():
@@ -29,7 +33,8 @@ def _read(path: Path):
 
 def _write(path: Path, rows):
     path.write_text(
-        "\n".join(json.dumps(x, ensure_ascii=False) for x in rows) + ("\n" if rows else ""),
+        "\n".join(json.dumps(x, ensure_ascii=False) for x in rows)
+        + ("\n" if rows else ""),
         encoding="utf-8",
     )
 
@@ -45,9 +50,18 @@ def get_settings(user_id):
             x.setdefault("autopost", False)
             x.setdefault("caption", DEFAULT_CAPTION)
             x.setdefault("send_all", False)
+            x.setdefault("quality", DEFAULT_QUALITY)
             x.setdefault("last_parts", [])
             x.setdefault("last_sent_index", 0)
+            x.setdefault("last_metadata", [])
+            x.setdefault("language", "ru")
+            x.setdefault("watermark", "")
+            x.setdefault("subtitles", "source")
+            x.setdefault("gemini_analysis", True)
+            x.setdefault("youtube_auto", False)
+            x.setdefault("youtube_privacy", "private")
             return x
+
     return {
         "user_id": str(user_id),
         "banner": "",
@@ -57,8 +71,16 @@ def get_settings(user_id):
         "autopost": False,
         "caption": DEFAULT_CAPTION,
         "send_all": False,
+        "quality": DEFAULT_QUALITY,
         "last_parts": [],
         "last_sent_index": 0,
+        "last_metadata": [],
+        "language": "ru",
+        "watermark": "",
+        "subtitles": "source",
+        "gemini_analysis": True,
+        "youtube_auto": False,
+        "youtube_privacy": "private",
     }
 
 
@@ -79,11 +101,17 @@ def save_settings(user_id, **changes):
 def save_account(user_id, platform, payload):
     rows = _read(ACCOUNTS_FILE)
     rows = [
-        x
-        for x in rows
-        if not (x.get("user_id") == str(user_id) and x.get("platform") == platform)
+        x for x in rows
+        if not (
+            x.get("user_id") == str(user_id)
+            and x.get("platform") == platform
+        )
     ]
-    rows.append({"user_id": str(user_id), "platform": platform, "payload": payload})
+    rows.append({
+        "user_id": str(user_id),
+        "platform": platform,
+        "payload": payload,
+    })
     _write(ACCOUNTS_FILE, rows)
 
 

@@ -1,48 +1,110 @@
-# Video bot — нарезка + баннер CSDOG
+# VideoProcessing v15
 
-Telegram-бот: скачивание (yt-dlp), вертикаль 9:16, нарезка 15/30/45/60 сек, вставка баннера по центру.
+Telegram-бот для нарезки видео в вертикальные 9:16 Shorts.
 
-## Локальный запуск
+## Возможности
 
-```bash
-python -m venv .venv
-# Windows: .venv\Scripts\activate
-pip install -r requirements.txt
-# нужен ffmpeg в PATH
-echo BOT_TOKEN=... > .env
-python main.py
-```
+- 480p / 720p / 1080p, максимум 1080×1920.
+- Мягкий blur вместо чёрных полей.
+- Полупрозрачный водяной знак внутри основного видео, а не на blur-зоне.
+- Source-субтитры без локального AI.
+- AI-субтитры через Gemini без локальной модели.
+- Русский / English интерфейс.
+- Gemini анализирует каждый отдельный клип и создаёт отдельные title, description, 15–25 релевантных hashtags и YouTube tags.
+- Один Gemini-запрос на клип: при AI-субтитрах транскрипт и metadata возвращаются вместе.
+- Автоматическая загрузка готовых Shorts в подключённый YouTube-канал.
+- Приватность YouTube: private / unlisted / public.
+- Один тяжёлый job одновременно.
+- FFmpeg — один поток.
+- Один клип кодируется один раз: blur + banner + watermark + subtitles.
+- Временные файлы удаляются сразу после этапа.
+- yt-dlp ограничивает загрузку выбранным качеством и использует один fragment за раз.
 
 ## Команды
 
-- Ссылка http(s) — скачать и обработать
-- `/settings` — настройки
-- `/clip` — длина куска
-- `/banner` — как загрузить баннер
-- Файл с подписью `баннер` — сохранить MP4 баннера
-- `/mirror` — зеркало
+- `/start`, `/help`
+- `/settings`
+- `/gemini on|off`
+- `/youtube`
+- `/quality 480|720|1080`
+- `/clip 15|30|45|60`
+- `/watermark текст`
+- `/watermark off`
+- `/subtitles off|source|ai`
+- `/language ru|en`
+- `/banner`
+- `/mirror`
+- `/caption текст`
+- `/sendall`
+- `/last`
+- `/cleanup`
 
-Баннер CSDOG: https://t.me/csdogTikTok/62  
-Правила: https://telegra.ph/Usloviya-bannerov-csdog-09-08
+## v15: Gemini + YouTube Shorts
 
-## Railway
+### Gemini
+Set in Railway:
 
-1. Dockerfile уже есть (python + ffmpeg)
-2. Variables: `BOT_TOKEN`, при необходимости `YTDLP_COOKIES`
-3. Локальный бот выключить (один polling)
+```env
+GEMINI_API_KEY=your_google_ai_studio_key
+GEMINI_MODEL=gemini-3.5-flash-lite
+```
 
-YouTube с IP облака часто требует cookies и всё равно может резать. RuTube/VK обычно стабильнее.
+Gemini analyzes each generated clip separately and creates a title, description, 15-25 relevant hashtags and YouTube keyword tags. If AI subtitles are enabled, the same request also returns timestamped speech cues, so the bot does not make a second AI request.
 
-## TikTok drafts
+`gemini-3.5-flash-lite` supports text, image, video and audio input and has a free tier for input/output tokens according to Google's current pricing documentation. Free-tier rate limits still apply.
 
-Только через официальный Content Posting API (`video.upload` → inbox). Заглушка в `services/tiktok.py`.
+### YouTube automatic upload
+The bot uses YouTube Data API OAuth and uploads each processed clip sequentially. It does not keep several upload buffers in RAM at once.
 
-## TikTok drafts
+Railway variables:
 
-1. Create app: https://developers.tiktok.com
-2. Product: Content Posting API, scope `video.upload`
-3. OAuth → user `access_token`
-4. In bot: `/settoken act.xxx`
-5. After processing a video: `/todraft`
+```env
+PUBLIC_BASE_URL=https://botets-production.up.railway.app
+# Не задавай YOUTUBE_REDIRECT_URI, если он содержит старый адрес.
+OAUTH_STATE_SECRET=long-random-secret
+YOUTUBE_CLIENT_SECRET_JSON={PASTE_THE_CONTENT_OF_client_secret.json_HERE}
+```
 
-See `/tiktok` in the bot for steps.
+In Google Cloud Console, create a **Web application** OAuth client and add:
+
+```text
+https://botets-production.up.railway.app/oauth/youtube/callback
+```
+
+to Authorized redirect URIs. Enable YouTube Data API v3. Then open `/youtube` in the bot and connect the channel.
+
+The bot defaults to `private` uploads. You can switch to `unlisted` or `public` in the YouTube menu.
+
+### YouTube download reliability
+The Docker image includes Node.js because current YouTube delivery can require a JavaScript runtime for player challenges. yt-dlp is configured to download only the selected quality, use one fragment at a time, and optionally use `credentials/cookies.txt` when provided. If YouTube changes its delivery, update `yt-dlp` before changing the rest of the bot.
+
+Only download/re-upload videos you have permission to use.
+
+
+### Если появляется «срок действия состояния OAuth истёк»
+
+В этой версии OAuth state не хранится только в оперативной памяти процесса. Он подписывается сервером, поэтому перезапуск Railway между открытием Google и callback больше не ломает авторизацию. Срок действия state — 15 минут. Если страница Google была открыта дольше 15 минут, просто нажмите Connect YouTube ещё раз.
+
+### Настройка именно для этого Railway проекта
+
+Ваш Railway-домен: `botets-production.up.railway.app`
+
+`PUBLIC_BASE_URL`:
+```env
+PUBLIC_BASE_URL=https://botets-production.up.railway.app
+```
+
+Authorized redirect URI в Google Cloud должен быть **ровно**:
+```text
+https://botets-production.up.railway.app/oauth/youtube/callback
+```
+
+В Railway нельзя оставлять `YOUTUBE_CLIENT_SECRET=JSON_OT_Google_OAuth` или другой текст-заглушку. Нужно вставить содержимое файла `client_secret.json`, который скачан из Google Cloud, в переменную `YOUTUBE_CLIENT_SECRET_JSON`. Нужен OAuth client типа **Web application**.
+
+
+### Важно: redirect_uri_mismatch
+
+Для этого проекта callback должен быть ровно:
+`https://botets-production.up.railway.app/oauth/youtube/callback`
+
+В Railway задай `PUBLIC_BASE_URL=https://botets-production.up.railway.app`. Если у тебя уже есть `YOUTUBE_REDIRECT_URI` со старым адресом, удали эту переменную. В Google Cloud в Authorized redirect URIs оставь ровно тот же callback. Бот показывает фактический callback в меню `/youtube`.
