@@ -59,14 +59,15 @@ The bot uses YouTube Data API OAuth and uploads each processed clip sequentially
 Railway variables:
 
 ```env
-PUBLIC_BASE_URL=https://YOUR-RAILWAY-DOMAIN
-YOUTUBE_CLIENT_SECRET={PASTE_YOUR_WEB_OAUTH_CLIENT_JSON_HERE}
+PUBLIC_BASE_URL=https://botets-production.up.railway.app
+OAUTH_STATE_SECRET=long-random-secret
+YOUTUBE_CLIENT_SECRET_JSON={PASTE_THE_CONTENT_OF_client_secret.json_HERE}
 ```
 
 In Google Cloud Console, create a **Web application** OAuth client and add:
 
 ```text
-https://YOUR-RAILWAY-DOMAIN/oauth/youtube/callback
+https://botets-production.up.railway.app/oauth/youtube/callback
 ```
 
 to Authorized redirect URIs. Enable YouTube Data API v3. Then open `/youtube` in the bot and connect the channel.
@@ -77,3 +78,24 @@ The bot defaults to `private` uploads. You can switch to `unlisted` or `public` 
 The Docker image includes Node.js because current YouTube delivery can require a JavaScript runtime for player challenges. yt-dlp is configured to download only the selected quality, use one fragment at a time, and optionally use `credentials/cookies.txt` when provided. If YouTube changes its delivery, update `yt-dlp` before changing the rest of the bot.
 
 Only download/re-upload videos you have permission to use.
+
+
+### Если появляется «срок действия состояния OAuth истёк»
+
+В этой версии OAuth state не хранится только в оперативной памяти процесса. Он подписывается сервером, поэтому перезапуск Railway между открытием Google и callback больше не ломает авторизацию. Срок действия state — 15 минут. Если страница Google была открыта дольше 15 минут, просто нажмите Connect YouTube ещё раз.
+
+### Настройка именно для этого Railway проекта
+
+Ваш Railway-домен: `botets-production.up.railway.app`
+
+`PUBLIC_BASE_URL`:
+```env
+PUBLIC_BASE_URL=https://botets-production.up.railway.app
+```
+
+Authorized redirect URI в Google Cloud должен быть **ровно**:
+```text
+https://botets-production.up.railway.app/oauth/youtube/callback
+```
+
+В Railway нельзя оставлять `YOUTUBE_CLIENT_SECRET=JSON_OT_Google_OAuth` или другой текст-заглушку. Нужно вставить содержимое файла `client_secret.json`, который скачан из Google Cloud, в переменную `YOUTUBE_CLIENT_SECRET_JSON`. Нужен OAuth client типа **Web application**.
