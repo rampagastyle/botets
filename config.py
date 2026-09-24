@@ -17,7 +17,7 @@ def _env_int(name: str, default: int) -> int:
     except (TypeError, ValueError):
         return int(default)
 
-MAX_FILE_SIZE = _env_int("MAX_FILE_SIZE", 512 * 1024 * 1024)
+MAX_FILE_SIZE = _env_int("MAX_FILE_SIZE", 2 * 1024 * 1024 * 1024)  # 2 GiB
 
 ADMIN_IDS = {
     x.strip()

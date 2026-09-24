@@ -95,8 +95,13 @@ async def video_link(message: Message):
             max_bytes = int(MAX_FILE_SIZE) if MAX_FILE_SIZE is not None else 0
             file_size = int(src.stat().st_size)
             if max_bytes > 0 and file_size > max_bytes:
+                mb = file_size / (1024 * 1024)
+                lim = max_bytes / (1024 * 1024)
                 cleanup_paths(src)
-                return await status.edit_text('⚠️ Файл слишком большой.')
+                return await status.edit_text(
+                    f'⚠️ Файл слишком большой: {mb:.0f} МБ (лимит {lim:.0f} МБ).\n'
+                    f'Снизьте качество в настройках (480p) или поднимите MAX_FILE_SIZE в Railway.'
+                )
 
             source_sub = raw / 'source_subtitles.vtt'
             if subtitle_mode != 'source':
