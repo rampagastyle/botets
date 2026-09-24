@@ -1,15 +1,14 @@
 from pathlib import Path
 
-from aiogram import Router
+from aiogram import Router, F
 from aiogram.filters import Command
-from aiogram import F
 from aiogram.types import Message, FSInputFile
 
-from config import is_allowed
+from config import WORK_DIR
+from services.whitelist import is_allowed
 from services.storage import get_settings
 from services.tiktok import get_tiktok_token, upload_to_inbox
 from services.processor import cleanup_user_work
-from config import WORK_DIR
 
 router = Router()
 MAX_SEND_BYTES = 45 * 1024 * 1024

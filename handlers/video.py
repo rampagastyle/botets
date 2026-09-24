@@ -7,7 +7,8 @@ from aiogram import Router
 from aiogram.types import Message, FSInputFile, InlineKeyboardMarkup, InlineKeyboardButton, CallbackQuery
 from aiogram import F
 
-from config import WORK_DIR, MAX_FILE_SIZE, is_allowed
+from config import WORK_DIR, MAX_FILE_SIZE
+from services.whitelist import is_allowed
 from services.storage import get_settings, save_settings
 from services.downloader import download
 from services.processor import (

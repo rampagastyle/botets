@@ -9,7 +9,8 @@ from aiogram.types import (
     InlineKeyboardButton,
 )
 
-from config import is_allowed, WORK_DIR
+from config import WORK_DIR, is_admin
+from services.whitelist import is_allowed
 from services.storage import get_settings, save_settings, DEFAULT_CAPTION
 from services.tiktok import set_tiktok_token, get_tiktok_token
 
@@ -17,35 +18,40 @@ router = Router()
 CLIP_OPTIONS = (15, 30, 45, 60)
 
 
-def clip_kb():
-    row = [
-        InlineKeyboardButton(text=f"  {n} сек  ", callback_data=f"clip:{n}")
-        for n in CLIP_OPTIONS
-    ]
+def clip_kb(current: int = 15):
+    row = []
+    for n in CLIP_OPTIONS:
+        mark = "·" if n != current else "●"
+        row.append(
+            InlineKeyboardButton(
+                text=f"{mark} {n}с",
+                callback_data=f"clip:{n}",
+            )
+        )
     return InlineKeyboardMarkup(inline_keyboard=[row])
 
 
 def _settings_text(user_id: int) -> str:
     s = get_settings(user_id)
     tt = get_tiktok_token(user_id)
-    ban = "✅" if s.get("banner") else "—"
+    ban = "да" if s.get("banner") else "нет"
     mir = "вкл" if s.get("mirror") else "выкл"
     allp = "вкл" if s.get("send_all") else "выкл"
-    tok = "✅" if tt and tt.get("access_token") else "—"
+    tok = "да" if tt and tt.get("access_token") else "нет"
     cap = (s.get("caption") or DEFAULT_CAPTION).replace("<", "").replace(">", "")
-    if len(cap) > 90:
-        cap = cap[:90] + "…"
+    if len(cap) > 100:
+        cap = cap[:100] + "…"
     return (
-        "━━━━━━━━━━━━━━━━━━\n"
+        "━━━━━━━━━━━━━━━━━━━━\n"
         "⚙️  <b>Настройки</b>\n"
-        "━━━━━━━━━━━━━━━━━━\n\n"
-        f"⏱  Нарезка: <b>{s.get('clip_seconds', 30)} сек</b>\n"
-        f"🪞  Mirror: <b>{mir}</b>\n"
-        f"🎬  Баннер: <b>{ban}</b>\n"
-        f"📦  Все части: <b>{allp}</b>\n"
-        f"🎵  TikTok: <b>{tok}</b>\n\n"
-        f"📝  Caption:\n<code>{cap}</code>\n"
-        "━━━━━━━━━━━━━━━━━━"
+        "━━━━━━━━━━━━━━━━━━━━\n\n"
+        f"⏱  Длина куска   <b>{s.get('clip_seconds', 15)} сек</b>\n"
+        f"🪞  Mirror        <b>{mir}</b>\n"
+        f"🎬  Баннер        <b>{ban}</b>\n"
+        f"📦  Слать все     <b>{allp}</b>\n"
+        f"🎵  TikTok token  <b>{tok}</b>\n\n"
+        f"📝  Caption\n<code>{cap}</code>\n"
+        "━━━━━━━━━━━━━━━━━━━━"
     )
 
 
@@ -54,10 +60,11 @@ def _settings_text(user_id: int) -> str:
 async def settings_cmd(message: Message):
     if not is_allowed(message.from_user.id):
         return
+    s = get_settings(message.from_user.id)
     await message.answer(
         _settings_text(message.from_user.id),
         parse_mode="HTML",
-        reply_markup=clip_kb(),
+        reply_markup=clip_kb(int(s.get("clip_seconds") or 15)),
     )
 
 
@@ -69,10 +76,13 @@ async def clip_cmd(message: Message):
     arg = (message.text or "").partition(" ")[2].strip()
     if arg.isdigit() and int(arg) in CLIP_OPTIONS:
         save_settings(message.from_user.id, clip_seconds=int(arg))
-        return await message.answer(f"✅ Длина нарезки: <b>{arg} сек</b>", parse_mode="HTML")
+        return await message.answer(
+            f"✅ Длина куска: <b>{arg} сек</b>", parse_mode="HTML"
+        )
+    s = get_settings(message.from_user.id)
     await message.answer(
-        "⏱ Выберите длину одного куска:",
-        reply_markup=clip_kb(),
+        "⏱ Длина одного куска:",
+        reply_markup=clip_kb(int(s.get("clip_seconds") or 15)),
     )
 
 
@@ -85,12 +95,13 @@ async def clip_cb(call: CallbackQuery):
     await call.answer(f"{sec} сек")
     try:
         await call.message.edit_text(
-            f"✅ Длина нарезки: <b>{sec} сек</b>",
+            f"✅ Длина куска: <b>{sec} сек</b>",
             parse_mode="HTML",
+            reply_markup=clip_kb(sec),
         )
     except Exception:
         await call.message.answer(
-            f"✅ Длина нарезки: <b>{sec} сек</b>",
+            f"✅ Длина куска: <b>{sec} сек</b>",
             parse_mode="HTML",
         )
 
@@ -101,14 +112,13 @@ async def banner_cmd(message: Message):
     if not is_allowed(message.from_user.id):
         return
     await message.answer(
-        "━━━━━━━━━━━━━━━━━━\n"
-        "🎬  <b>Баннер CSDOG</b>\n"
-        "━━━━━━━━━━━━━━━━━━\n\n"
-        "Пришлите <b>видеофайл</b> с подписью:\n"
+        "━━━━━━━━━━━━━━━━━━━━\n"
+        "🎬  <b>Баннер</b>\n"
+        "━━━━━━━━━━━━━━━━━━━━\n\n"
+        "Отправьте <b>видео</b> с подписью:\n"
         "<code>баннер</code>\n\n"
-        "Требования: ~4 сек, с озвучкой\n"
-        "Скачать: https://t.me/csdogTikTok/62\n"
-        "Правила: telegra.ph/Usloviya-bannerov-csdog-09-08",
+        "~4 сек, с озвучкой (CSDOG)\n"
+        "https://t.me/csdogTikTok/62",
         parse_mode="HTML",
         disable_web_page_preview=True,
     )
@@ -129,7 +139,7 @@ async def banner_file(message: Message):
     dest = dest_dir / "banner.mp4"
     await message.bot.download(file, destination=dest)
     save_settings(message.from_user.id, banner=str(dest))
-    await message.answer("✅ Баннер сохранён. Будет в центре каждой нарезки.")
+    await message.answer("✅ Баннер сохранён.")
 
 
 @router.message(Command("mirror"))
@@ -140,7 +150,9 @@ async def mirror_cmd(message: Message):
     s = get_settings(message.from_user.id)
     new = not s.get("mirror", False)
     save_settings(message.from_user.id, mirror=new)
-    await message.answer(f"🪞 Mirror: <b>{'вкл' if new else 'выкл'}</b>", parse_mode="HTML")
+    await message.answer(
+        f"🪞 Mirror: <b>{'вкл' if new else 'выкл'}</b>", parse_mode="HTML"
+    )
 
 
 @router.message(Command("sendall"))
@@ -152,8 +164,7 @@ async def sendall_cmd(message: Message):
     new = not s.get("send_all", False)
     save_settings(message.from_user.id, send_all=new)
     await message.answer(
-        f"📦 Отправка всех частей: <b>{'вкл' if new else 'выкл'}</b>\n"
-        "<i>Много файлов подряд — лимиты Telegram</i>",
+        f"📦 Слать все части сразу: <b>{'вкл' if new else 'выкл'}</b>",
         parse_mode="HTML",
     )
 
@@ -163,7 +174,6 @@ async def sendall_cmd(message: Message):
 async def caption_cmd(message: Message):
     if not is_allowed(message.from_user.id):
         return
-    # if only button pressed, show current
     if message.text and message.text.startswith("📝"):
         arg = ""
     else:
@@ -171,9 +181,9 @@ async def caption_cmd(message: Message):
     if not arg:
         s = get_settings(message.from_user.id)
         return await message.answer(
-            "📝 Текущий caption:\n\n"
+            "📝 Caption сейчас:\n\n"
             f"<code>{s.get('caption') or DEFAULT_CAPTION}</code>\n\n"
-            "Сменить: <code>/caption ваш текст #cs2</code>\n"
+            "Сменить: <code>/caption текст #cs2</code>\n"
             "Сброс: <code>/caption reset</code>",
             parse_mode="HTML",
         )
@@ -192,23 +202,28 @@ async def help_btn(message: Message):
     await start(message)
 
 
+@router.message(F.text == "👥 Whitelist")
+async def wl_btn(message: Message):
+    if not is_admin(message.from_user.id):
+        return await message.answer("⛔️ Только для админа.")
+    from handlers.admin import whitelist_cmd
+    await whitelist_cmd(message)
+
+
 @router.message(Command("tiktok"))
 async def tiktok_help(message: Message):
     if not is_allowed(message.from_user.id):
         return
     tt = get_tiktok_token(message.from_user.id)
-    status = "✅" if tt and tt.get("access_token") else "—"
+    status = "подключён" if tt and tt.get("access_token") else "нет"
     await message.answer(
-        "━━━━━━━━━━━━━━━━━━\n"
-        f"🎵  <b>TikTok API</b>  {status}\n"
-        "━━━━━━━━━━━━━━━━━━\n\n"
-        "Без верификации Developer — только ручная загрузка.\n\n"
-        "Если токен есть:\n"
-        "<code>/settoken act.xxxxx</code>\n"
-        "затем <code>/todraft</code>\n\n"
-        "docs: developers.tiktok.com",
+        "━━━━━━━━━━━━━━━━━━━━\n"
+        f"🎵  <b>TikTok</b> · {status}\n"
+        "━━━━━━━━━━━━━━━━━━━━\n\n"
+        "Без Developer App — загрузка вручную.\n"
+        "Токен: <code>/settoken act.xxx</code>\n"
+        "В inbox: <code>/todraft</code>",
         parse_mode="HTML",
-        disable_web_page_preview=True,
     )
 
 
@@ -218,10 +233,14 @@ async def settoken_cmd(message: Message):
         return
     parts = message.text.split(maxsplit=2)
     if len(parts) < 2:
-        return await message.answer("Пример:\n<code>/settoken act.xxxxx</code>", parse_mode="HTML")
-    access = parts[1].strip()
-    open_id = parts[2].strip() if len(parts) > 2 else ""
-    set_tiktok_token(message.from_user.id, access, open_id)
+        return await message.answer(
+            "Пример: <code>/settoken act.xxxxx</code>", parse_mode="HTML"
+        )
+    set_tiktok_token(
+        message.from_user.id,
+        parts[1].strip(),
+        parts[2].strip() if len(parts) > 2 else "",
+    )
     try:
         await message.delete()
     except Exception:

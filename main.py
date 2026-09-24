@@ -11,6 +11,7 @@ from handlers.start import router as start_router
 from handlers.settings import router as settings_router
 from handlers.video import router as video_router
 from handlers.upload import router as upload_router
+from handlers.admin import router as admin_router
 from services.storage import ensure_storage
 
 
@@ -54,6 +55,7 @@ async def main():
     dp.include_router(settings_router)
     dp.include_router(video_router)
     dp.include_router(upload_router)
+    dp.include_router(admin_router)
     await dp.start_polling(bot)
 
 

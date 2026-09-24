@@ -7,12 +7,19 @@ load_dotenv(BASE_DIR / ".env")
 
 BOT_TOKEN = os.getenv("BOT_TOKEN", "")
 MAX_FILE_SIZE = int(os.getenv("MAX_FILE_SIZE", str(2 * 1024**3)))
-WHITELIST = {x.strip() for x in os.getenv("WHITELIST", "").split(",") if x.strip()}
+
+# Админы — могут менять whitelist (через env, через запятую)
+ADMIN_IDS = {x.strip() for x in os.getenv("ADMIN_IDS", "").split(",") if x.strip()}
+
+# Стартовый whitelist из env (дополняет файл data/whitelist.txt)
+ENV_WHITELIST = {x.strip() for x in os.getenv("WHITELIST", "").split(",") if x.strip()}
+
 WORK_DIR = BASE_DIR / "data"
 USERS_FILE = WORK_DIR / "users.txt"
 SETTINGS_FILE = WORK_DIR / "settings.txt"
 ACCOUNTS_FILE = WORK_DIR / "accounts.txt"
+WHITELIST_FILE = WORK_DIR / "whitelist.txt"
 
 
-def is_allowed(user_id: int) -> bool:
-    return not WHITELIST or str(user_id) in WHITELIST
+def is_admin(user_id: int) -> bool:
+    return str(user_id) in ADMIN_IDS
