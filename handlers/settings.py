@@ -18,7 +18,26 @@ router = Router()
 CLIP_OPTIONS = (15, 30, 45, 60)
 
 
+def settings_kb(user_id: int):
+    s = get_settings(user_id)
+    has = bool(s.get("banner") and Path(str(s.get("banner"))).exists())
+    en = bool(s.get("banner_enabled")) and has
+    ban_btn = "🎬 Баннер: вкл" if en else "🎬 Баннер: выкл"
+    if not has:
+        ban_btn = "🎬 Баннер: нет файла"
+    clip = int(s.get("clip_seconds") or 15)
+    rows = [
+        [InlineKeyboardButton(text=ban_btn, callback_data="banner:toggle")],
+        [
+            InlineKeyboardButton(text=f"{'●' if clip==n else '·'} {n}с", callback_data=f"clip:{n}")
+            for n in CLIP_OPTIONS
+        ],
+    ]
+    return InlineKeyboardMarkup(inline_keyboard=rows)
+
+
 def clip_kb(current: int = 15):
+
     row = []
     for n in CLIP_OPTIONS:
         mark = "·" if n != current else "●"
@@ -34,7 +53,9 @@ def clip_kb(current: int = 15):
 def _settings_text(user_id: int) -> str:
     s = get_settings(user_id)
     tt = get_tiktok_token(user_id)
-    ban = "да" if s.get("banner") else "нет"
+    has_ban = bool(s.get("banner") and Path(s.get("banner")).exists())
+    en = bool(s.get("banner_enabled")) and has_ban
+    ban = ("вкл" if en else "выкл") if has_ban else "не загружен"
     mir = "вкл" if s.get("mirror") else "выкл"
     allp = "вкл" if s.get("send_all") else "выкл"
     tok = "да" if tt and tt.get("access_token") else "нет"
@@ -43,7 +64,7 @@ def _settings_text(user_id: int) -> str:
         cap = cap[:100] + "…"
     return (
         "━━━━━━━━━━━━━━━━━━━━\n"
-        "⚙️  <b>Настройки</b>\n"
+        "⚙️  <b>Настройки</b>  ·  VideoProcessing v12\n"
         "━━━━━━━━━━━━━━━━━━━━\n\n"
         f"⏱  Длина куска   <b>{s.get('clip_seconds', 15)} сек</b>\n"
         f"🪞  Mirror        <b>{mir}</b>\n"
@@ -64,7 +85,7 @@ async def settings_cmd(message: Message):
     await message.answer(
         _settings_text(message.from_user.id),
         parse_mode="HTML",
-        reply_markup=clip_kb(int(s.get("clip_seconds") or 15)),
+        reply_markup=settings_kb(message.from_user.id),
     )
 
 
@@ -138,8 +159,13 @@ async def banner_file(message: Message):
     dest_dir.mkdir(parents=True, exist_ok=True)
     dest = dest_dir / "banner.mp4"
     await message.bot.download(file, destination=dest)
-    save_settings(message.from_user.id, banner=str(dest))
-    await message.answer("✅ Баннер сохранён.")
+    save_settings(message.from_user.id, banner=str(dest), banner_enabled=True)
+    await message.answer(
+        "✅ Баннер сохранён на сервере и <b>включён</b>.\n"
+        "Вставка с <b>30 сек</b> (если кусок короче — по центру).\n"
+        "Выключить: ⚙️ Настройки → кнопка баннера",
+        parse_mode="HTML",
+    )
 
 
 @router.message(Command("mirror"))
@@ -196,10 +222,11 @@ async def caption_cmd(message: Message):
 
 @router.message(F.text == "❓ Помощь")
 async def help_btn(message: Message):
+    from handlers.start import about_cmd, start
     if not is_allowed(message.from_user.id):
-        return
-    from handlers.start import start
-    await start(message)
+        from handlers.start import denied_text
+        return await message.answer(denied_text(message.from_user.id), parse_mode="HTML")
+    await about_cmd(message)
 
 
 @router.message(F.text == "👥 Whitelist")

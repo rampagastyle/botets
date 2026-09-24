@@ -13,7 +13,7 @@ from services.storage import get_settings, save_settings
 from services.downloader import download
 from services.processor import (
     to_vertical,
-    insert_banner_center,
+    insert_banner_at,
     split_video,
     cleanup_paths,
     cleanup_user_work,
@@ -77,6 +77,7 @@ async def video_link(message: Message):
             clip_sec = 30
         mirror = bool(s.get("mirror"))
         banner_path = s.get("banner") or ""
+        banner_on = bool(s.get("banner_enabled")) and bool(banner_path) and Path(banner_path).exists()
         send_all = bool(s.get("send_all"))
         caption = s.get("caption") or ""
 
@@ -115,7 +116,7 @@ async def video_link(message: Message):
             cleanup_paths(part)
             gc.collect()
 
-            if banner_path and Path(banner_path).exists():
+            if banner_on:
                 final = out_dir / f"part_{i:03d}.mp4"
                 try:
                     await status.edit_text(
@@ -125,7 +126,7 @@ async def video_link(message: Message):
                 except Exception:
                     pass
                 await asyncio.to_thread(
-                    insert_banner_center, vert, banner_path, final
+                    insert_banner_at, vert, banner_path, final
                 )
                 cleanup_paths(vert)
                 final_parts.append(final)
@@ -135,7 +136,7 @@ async def video_link(message: Message):
 
         note = ""
         if not (banner_path and Path(banner_path).exists()):
-            note = "\nℹ️ Баннер не задан"
+            note = "" if banner_on else "\nℹ️ Баннер выкл"
 
         save_settings(
             message.from_user.id,

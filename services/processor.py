@@ -2,7 +2,6 @@ from pathlib import Path
 import subprocess
 import shutil
 
-# Низкое разрешение специально под маленький RAM (Railway free ~512MB)
 W, H = 480, 854
 
 
@@ -27,7 +26,6 @@ def duration(path):
 
 
 def to_vertical(src, dst, mirror=False, width=W, height=H):
-    """Лёгкая 9:16: 480x854, 30fps, 1 поток, чёрные поля."""
     src, dst = Path(src), Path(dst)
     dst.parent.mkdir(parents=True, exist_ok=True)
     vf = (
@@ -43,8 +41,7 @@ def to_vertical(src, dst, mirror=False, width=W, height=H):
         )
     run([
         "ffmpeg", "-y",
-        "-threads", "1",
-        "-filter_threads", "1",
+        "-threads", "1", "-filter_threads", "1",
         "-i", str(src),
         "-vf", vf,
         "-map", "0:v", "-map", "0:a?",
@@ -56,27 +53,36 @@ def to_vertical(src, dst, mirror=False, width=W, height=H):
     return dst
 
 
-def insert_banner_center(src, banner, dst):
+def insert_banner_at(src, banner, dst, at_second: float = 30.0):
     """
-    Баннер поверх середины одним проходом (overlay), без тройного concat —
-    меньше пиковая память.
+    Вставка баннера с указанной секунды (по умолчанию 30).
+    Если ролик короче — баннер в середину (правила для роликов < 1 мин).
     """
     src, banner, dst = Path(src), Path(banner), Path(dst)
     dst.parent.mkdir(parents=True, exist_ok=True)
 
     d_main = duration(src)
-    d_ban = max(0.5, min(duration(banner), d_main))
-    start = max(0.0, d_main / 2.0 - d_ban / 2.0)
+    d_ban = max(0.5, min(duration(banner), d_main * 0.9))
+
+    # Предпочтительно с at_second; иначе центр
+    if d_main >= at_second + d_ban:
+        start = float(at_second)
+    elif d_main >= d_ban + 0.5:
+        start = max(0.0, d_main / 2.0 - d_ban / 2.0)
+    else:
+        start = 0.0
+
     end = min(d_main, start + d_ban)
+    d_ban = max(0.1, end - start)
+
     t1, t2, db = round(start, 3), round(end, 3), round(d_ban, 3)
 
-    # video: scale both, overlay banner in time window
-    # audio: main with banner audio mixed in window is complex — replace mid with banner audio via asplit
     fc = (
         f"[0:v]fps=30,scale={W}:{H}:force_original_aspect_ratio=decrease,"
         f"pad={W}:{H}:(ow-iw)/2:(oh-ih)/2,setsar=1,format=yuv420p[base];"
         f"[1:v]fps=30,scale={W}:{H}:force_original_aspect_ratio=decrease,"
-        f"pad={W}:{H}:(ow-iw)/2:(oh-ih)/2,setsar=1,format=yuv420p,setpts=PTS-STARTPTS+{t1}/TB[ban];"
+        f"pad={W}:{H}:(ow-iw)/2:(oh-ih)/2,setsar=1,format=yuv420p,"
+        f"setpts=PTS-STARTPTS+{t1}/TB[ban];"
         f"[base][ban]overlay=0:0:enable='between(t,{t1},{t2})'[vout]"
     )
 
@@ -84,7 +90,6 @@ def insert_banner_center(src, banner, dst):
     has_ban = _has_audio(banner)
 
     if has_main and has_ban:
-        # before + banner audio + after
         fc += (
             f";[0:a]atrim=0:{t1},asetpts=PTS-STARTPTS[a0];"
             f"[1:a]aformat=sample_rates=44100:channel_layouts=stereo,"
@@ -101,8 +106,7 @@ def insert_banner_center(src, banner, dst):
 
     run([
         "ffmpeg", "-y",
-        "-threads", "1",
-        "-filter_threads", "1",
+        "-threads", "1", "-filter_threads", "1",
         "-i", str(src),
         "-i", str(banner),
         "-filter_complex", fc,
@@ -113,6 +117,11 @@ def insert_banner_center(src, banner, dst):
         str(dst),
     ])
     return dst
+
+
+# совместимость со старым именем
+def insert_banner_center(src, banner, dst):
+    return insert_banner_at(src, banner, dst, at_second=30.0)
 
 
 def _has_audio(path) -> bool:
