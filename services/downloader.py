@@ -21,6 +21,35 @@ def _quality(value) -> int:
     return int(value)
 
 
+
+
+
+
+def _normalize_proxy(raw: str):
+    """Use only the first valid proxy URL. Ignore broken multi-line Railway values."""
+    if not raw:
+        return None
+    line = ""
+    for part in str(raw).replace("\r", "\n").split("\n"):
+        part = part.strip()
+        if part:
+            line = part
+            break
+    if not line:
+        return None
+    if "://" not in line:
+        if line[:1].isdigit() or line.startswith("["):
+            line = "http://" + line
+        else:
+            return None
+    if line.count("://") != 1:
+        return None
+    # Reject glued garbage like "host:443\nhttp://other"
+    after = line.split("://", 1)[1]
+    if any(ch in after for ch in ("\n", "\r", " ")):
+        return None
+    return line
+
 def _youtube_profiles():
     """
     Порядок клиентов: сначала «мобильные»/TV — меньше 403 на googlevideo
@@ -74,7 +103,7 @@ def download(
     quality = _quality(quality)
     subtitle_lang = "en" if str(subtitle_lang).lower() == "en" else "ru"
     cookies = Path(os.getenv("YTDLP_COOKIES_FILE", "credentials/cookies.txt"))
-    proxy = (os.getenv("YTDLP_PROXY") or os.getenv("HTTPS_PROXY") or "").strip() or None
+    proxy = _normalize_proxy(os.getenv("YTDLP_PROXY") or os.getenv("HTTPS_PROXY") or "")
 
     def hook(d):
         if not progress_callback:
