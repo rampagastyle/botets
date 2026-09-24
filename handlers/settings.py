@@ -11,7 +11,12 @@ from aiogram.types import (
 
 from config import WORK_DIR, is_admin
 from services.whitelist import is_allowed
-from services.storage import get_settings, save_settings, DEFAULT_CAPTION
+from services.storage import (
+    get_settings,
+    save_settings,
+    DEFAULT_CAPTION,
+    QUALITY_OPTIONS,
+)
 from services.tiktok import set_tiktok_token, get_tiktok_token
 
 router = Router()
@@ -25,19 +30,31 @@ def settings_kb(user_id: int):
     ban_btn = "🎬 Баннер: вкл" if en else "🎬 Баннер: выкл"
     if not has:
         ban_btn = "🎬 Баннер: нет файла"
+
     clip = int(s.get("clip_seconds") or 15)
+    quality = int(s.get("quality") or 480)
+
     rows = [
         [InlineKeyboardButton(text=ban_btn, callback_data="banner:toggle")],
         [
-            InlineKeyboardButton(text=f"{'●' if clip==n else '·'} {n}с", callback_data=f"clip:{n}")
+            InlineKeyboardButton(
+                text=f"{'●' if clip == n else '·'} {n}с",
+                callback_data=f"clip:{n}",
+            )
             for n in CLIP_OPTIONS
+        ],
+        [
+            InlineKeyboardButton(
+                text=f"{'●' if quality == q else '·'} {q}p",
+                callback_data=f"quality:{q}",
+            )
+            for q in QUALITY_OPTIONS
         ],
     ]
     return InlineKeyboardMarkup(inline_keyboard=rows)
 
 
-def clip_kb(current: int = 15):
-
+def clip_kb(current=15):
     row = []
     for n in CLIP_OPTIONS:
         mark = "·" if n != current else "●"
@@ -45,6 +62,19 @@ def clip_kb(current: int = 15):
             InlineKeyboardButton(
                 text=f"{mark} {n}с",
                 callback_data=f"clip:{n}",
+            )
+        )
+    return InlineKeyboardMarkup(inline_keyboard=[row])
+
+
+def quality_kb(current=480):
+    row = []
+    for q in QUALITY_OPTIONS:
+        mark = "·" if q != current else "●"
+        row.append(
+            InlineKeyboardButton(
+                text=f"{mark} {q}p",
+                callback_data=f"quality:{q}",
             )
         )
     return InlineKeyboardMarkup(inline_keyboard=[row])
@@ -62,16 +92,24 @@ def _settings_text(user_id: int) -> str:
     cap = (s.get("caption") or DEFAULT_CAPTION).replace("<", "").replace(">", "")
     if len(cap) > 100:
         cap = cap[:100] + "…"
+
+    quality = int(s.get("quality") or 480)
+    if quality not in QUALITY_OPTIONS:
+        quality = 480
+
     return (
         "━━━━━━━━━━━━━━━━━━━━\n"
-        "⚙️  <b>Настройки</b>  ·  VideoProcessing v12\n"
+        "⚙️  <b>Настройки</b>  ·  VideoProcessing v13\n"
         "━━━━━━━━━━━━━━━━━━━━\n\n"
         f"⏱  Длина куска   <b>{s.get('clip_seconds', 15)} сек</b>\n"
+        f"🎞  Качество      <b>{quality}p</b>\n"
         f"🪞  Mirror        <b>{mir}</b>\n"
         f"🎬  Баннер        <b>{ban}</b>\n"
         f"📦  Слать все     <b>{allp}</b>\n"
         f"🎵  TikTok token  <b>{tok}</b>\n\n"
-        f"📝  Caption\n<code>{cap}</code>\n"
+        f"📝  Caption\n<code>{cap}</code>\n\n"
+        "Разрешение максимум: <b>1080p (1080×1920)</b>\n"
+        "Фон вместо чёрных полос: <b>мягкий blur</b>.\n"
         "━━━━━━━━━━━━━━━━━━━━"
     )
 
@@ -81,12 +119,98 @@ def _settings_text(user_id: int) -> str:
 async def settings_cmd(message: Message):
     if not is_allowed(message.from_user.id):
         return
-    s = get_settings(message.from_user.id)
     await message.answer(
         _settings_text(message.from_user.id),
         parse_mode="HTML",
         reply_markup=settings_kb(message.from_user.id),
     )
+
+
+@router.message(Command("quality"))
+@router.message(F.text == "🎞 Качество")
+async def quality_cmd(message: Message):
+    if not is_allowed(message.from_user.id):
+        return
+
+    arg = (message.text or "").partition(" ")[2].strip()
+    if arg.isdigit() and int(arg) in QUALITY_OPTIONS:
+        q = int(arg)
+        save_settings(message.from_user.id, quality=q)
+        return await message.answer(
+            f"✅ Качество выхода: <b>{q}p</b> (максимум 1080p)",
+            parse_mode="HTML",
+        )
+
+    current = int(get_settings(message.from_user.id).get("quality") or 480)
+    if current not in QUALITY_OPTIONS:
+        current = 480
+
+    await message.answer(
+        "🎞 <b>Качество видео</b>\n\n"
+        "480p — меньше нагрузка и быстрее.\n"
+        "720p — баланс качества и нагрузки.\n"
+        "1080p — максимум, требует больше CPU/времени.\n\n"
+        "Выбор влияет и на скачивание исходника, поэтому "
+        "бот не будет тащить 4K, если выбран 1080p.",
+        parse_mode="HTML",
+        reply_markup=quality_kb(current),
+    )
+
+
+@router.callback_query(F.data.startswith("quality:"))
+async def quality_cb(call: CallbackQuery):
+    if not is_allowed(call.from_user.id):
+        return await call.answer("Нет доступа", show_alert=True)
+
+    try:
+        q = int(call.data.split(":")[1])
+    except (IndexError, ValueError):
+        return await call.answer("Ошибка", show_alert=True)
+
+    if q not in QUALITY_OPTIONS:
+        return await call.answer("Недоступное качество", show_alert=True)
+
+    save_settings(call.from_user.id, quality=q)
+    await call.answer(f"Качество: {q}p")
+
+    try:
+        await call.message.edit_text(
+            _settings_text(call.from_user.id),
+            parse_mode="HTML",
+            reply_markup=settings_kb(call.from_user.id),
+        )
+    except Exception:
+        await call.message.answer(
+            f"✅ Качество выхода: <b>{q}p</b>",
+            parse_mode="HTML",
+        )
+
+
+@router.callback_query(F.data == "banner:toggle")
+async def banner_toggle_cb(call: CallbackQuery):
+    if not is_allowed(call.from_user.id):
+        return await call.answer("Нет доступа", show_alert=True)
+
+    s = get_settings(call.from_user.id)
+    has = bool(s.get("banner") and Path(str(s.get("banner"))).exists())
+    if not has:
+        return await call.answer(
+            "Сначала загрузите баннер",
+            show_alert=True,
+        )
+
+    new = not bool(s.get("banner_enabled"))
+    save_settings(call.from_user.id, banner_enabled=new)
+    await call.answer(f"Баннер: {'вкл' if new else 'выкл'}")
+
+    try:
+        await call.message.edit_text(
+            _settings_text(call.from_user.id),
+            parse_mode="HTML",
+            reply_markup=settings_kb(call.from_user.id),
+        )
+    except Exception:
+        pass
 
 
 @router.message(Command("clip"))
@@ -112,6 +236,8 @@ async def clip_cb(call: CallbackQuery):
     if not is_allowed(call.from_user.id):
         return await call.answer("Нет доступа", show_alert=True)
     sec = int(call.data.split(":")[1])
+    if sec not in CLIP_OPTIONS:
+        return await call.answer("Недопустимая длина", show_alert=True)
     save_settings(call.from_user.id, clip_seconds=sec)
     await call.answer(f"{sec} сек")
     try:
@@ -155,11 +281,16 @@ async def banner_file(message: Message):
     file = message.video or message.document
     if message.document and not (message.document.mime_type or "").startswith("video"):
         return await message.answer("⚠️ Нужен видеофайл (MP4/MOV).")
+
     dest_dir = WORK_DIR / str(message.from_user.id) / "banner"
     dest_dir.mkdir(parents=True, exist_ok=True)
     dest = dest_dir / "banner.mp4"
     await message.bot.download(file, destination=dest)
-    save_settings(message.from_user.id, banner=str(dest), banner_enabled=True)
+    save_settings(
+        message.from_user.id,
+        banner=str(dest),
+        banner_enabled=True,
+    )
     await message.answer(
         "✅ Баннер сохранён на сервере и <b>включён</b>.\n"
         "Вставка с <b>30 сек</b> (если кусок короче — по центру).\n"
@@ -222,10 +353,13 @@ async def caption_cmd(message: Message):
 
 @router.message(F.text == "❓ Помощь")
 async def help_btn(message: Message):
-    from handlers.start import about_cmd, start
+    from handlers.start import about_cmd
     if not is_allowed(message.from_user.id):
         from handlers.start import denied_text
-        return await message.answer(denied_text(message.from_user.id), parse_mode="HTML")
+        return await message.answer(
+            denied_text(message.from_user.id),
+            parse_mode="HTML",
+        )
     await about_cmd(message)
 
 
@@ -261,7 +395,8 @@ async def settoken_cmd(message: Message):
     parts = message.text.split(maxsplit=2)
     if len(parts) < 2:
         return await message.answer(
-            "Пример: <code>/settoken act.xxxxx</code>", parse_mode="HTML"
+            "Пример: <code>/settoken act.xxxxx</code>",
+            parse_mode="HTML",
         )
     set_tiktok_token(
         message.from_user.id,
