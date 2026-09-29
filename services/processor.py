@@ -133,6 +133,10 @@ def insert_banner_at(
             t1 = float(at_second)
     t1 = round(min(t1, max(0.0, d_main - 0.05)), 3)
     db = round(d_ban, 3)
+    # ffmpeg trim не принимает выражения вида "30.017+0.04" — только готовые числа
+    t1_end = round(min(d_main, t1 + 0.05), 3)
+    if t1_end <= t1:
+        t1_end = round(min(d_main, t1 + 0.02), 3)
 
     bg = _blur_bg(width, height)
     fg = _fg(width, height, mirror)
@@ -146,7 +150,7 @@ def insert_banner_at(
         f"[bg][fg]overlay=(W-w)/2:(H-h)/2,format=yuv420p,setsar=1[base];"
         f"[base]split=3[s0][s1][s2];"
         f"[s0]trim=0:{t1},setpts=PTS-STARTPTS[pre];"
-        f"[s1]trim={t1}:{t1}+0.04,setpts=PTS-STARTPTS,"
+        f"[s1]trim={t1}:{t1_end},setpts=PTS-STARTPTS,"
         f"tpad=stop_mode=clone:stop_duration={db},trim=0:{db},setpts=PTS-STARTPTS[frz];"
         f"[1:v]fps=30,scale={bw}:{bh}:force_original_aspect_ratio=decrease:flags=fast_bilinear,"
         f"setsar=1,format=yuv420p,setpts=PTS-STARTPTS[ban];"
