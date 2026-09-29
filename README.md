@@ -1,110 +1,105 @@
-# VideoProcessing v15
+# 🍬 Telegram-бот магазина домашнего мармелада
 
-Telegram-бот для нарезки видео в вертикальные 9:16 Shorts.
+Полнофункциональный асинхронный бот-магазин на **aiogram 3.x** + **SQLite (aiosqlite)**.
 
 ## Возможности
 
-- 480p / 720p / 1080p, максимум 1080×1920.
-- Мягкий blur вместо чёрных полей.
-- Полупрозрачный водяной знак внутри основного видео, а не на blur-зоне.
-- Source-субтитры без локального AI.
-- AI-субтитры через Gemini без локальной модели.
-- Русский / English интерфейс.
-- Gemini анализирует каждый отдельный клип и создаёт отдельные title, description, 15–25 релевантных hashtags и YouTube tags.
-- Один Gemini-запрос на клип: при AI-субтитрах транскрипт и metadata возвращаются вместе.
-- Автоматическая загрузка готовых Shorts в подключённый YouTube-канал.
-- Приватность YouTube: private / unlisted / public.
-- Один тяжёлый job одновременно.
-- FFmpeg — один поток.
-- Один клип кодируется один раз: blur + banner + watermark + subtitles.
-- Временные файлы удаляются сразу после этапа.
-- yt-dlp ограничивает загрузку выбранным качеством и использует один fragment за раз.
+**Пользователь:**
+- Каталог (категории → разделы → товары) с фото
+- Корзина с изменением количества
+- Оформление заказа с оплатой с баланса
+- История заказов
+- Пополнение баланса через крипто-кошелёк + загрузка чека
 
-## Команды
+**Админ (`/admin`):**
+- Управление категориями, разделами, товарами (CRUD + видимость + остатки)
+- Заказы: смена статусов с уведомлением покупателя
+- Заявки на пополнение: одобрение/отказ
+- Настройки: адрес кошелька, тексты приветствия и «О магазине»
+- Поиск пользователей и ручное изменение баланса
+- Рассылка всем пользователям (текст + опционально фото)
 
-- `/start`, `/help`
-- `/settings`
-- `/gemini on|off`
-- `/youtube`
-- `/quality 480|720|1080`
-- `/clip 15|30|45|60`
-- `/watermark текст`
-- `/watermark off`
-- `/subtitles off|source|ai`
-- `/language ru|en`
-- `/banner`
-- `/mirror`
-- `/caption текст`
-- `/sendall`
-- `/last`
-- `/cleanup`
+## Структура проекта
 
-## v15: Gemini + YouTube Shorts
-
-### Gemini
-Set in Railway:
-
-```env
-GEMINI_API_KEY=your_google_ai_studio_key
-GEMINI_MODEL=gemini-3.5-flash-lite
+```
+marmalade_bot/
+├── main.py              # Точка входа
+├── config.py            # Конфиг из переменных окружения
+├── database.py          # Работа с SQLite
+├── keyboards.py         # Все inline-клавиатуры
+├── states.py            # FSM-состояния
+├── handlers/
+│   ├── user.py          # Пользовательские хендлеры
+│   ├── balance.py       # Баланс и пополнение
+│   └── admin.py         # Админ-панель
+├── requirements.txt
+├── Procfile
+├── railway.json
+├── .env.example
+└── README.md
 ```
 
-Gemini analyzes each generated clip separately and creates a title, description, 15-25 relevant hashtags and YouTube keyword tags. If AI subtitles are enabled, the same request also returns timestamped speech cues, so the bot does not make a second AI request.
+## Локальный запуск
 
-`gemini-3.5-flash-lite` supports text, image, video and audio input and has a free tier for input/output tokens according to Google's current pricing documentation. Free-tier rate limits still apply.
+1. Создайте бота через [@BotFather](https://t.me/BotFather), получите токен.
+2. Узнайте свой Telegram ID (например, через [@userinfobot](https://t.me/userinfobot)).
+3. Скопируйте `.env.example` → `.env` и заполните:
+   ```
+   BOT_TOKEN=...
+   ADMIN_IDS=ваш_id
+   DB_PATH=./shop.db
+   ```
+4. Установите зависимости:
+   ```bash
+   pip install -r requirements.txt
+   ```
+5. Запустите:
+   ```bash
+   python main.py
+   ```
 
-### YouTube automatic upload
-The bot uses YouTube Data API OAuth and uploads each processed clip sequentially. It does not keep several upload buffers in RAM at once.
+## Деплой на Railway
 
-Railway variables:
+### 1. Подготовка репозитория
+- Загрузите папку проекта в GitHub-репозиторий.
 
-```env
-PUBLIC_BASE_URL=https://botets-production.up.railway.app
-# Не задавай YOUTUBE_REDIRECT_URI, если он содержит старый адрес.
-OAUTH_STATE_SECRET=long-random-secret
-YOUTUBE_CLIENT_SECRET_JSON={PASTE_THE_CONTENT_OF_client_secret.json_HERE}
-```
+### 2. Создание проекта на Railway
+1. Зайдите на [railway.app](https://railway.app) → **New Project** → **Deploy from GitHub repo**.
+2. Выберите репозиторий с ботом.
 
-In Google Cloud Console, create a **Web application** OAuth client and add:
+### 3. Переменные окружения
+В настройках сервиса (**Variables**) добавьте:
+| Переменная   | Значение                          |
+|--------------|-----------------------------------|
+| `BOT_TOKEN`  | токен от BotFather                |
+| `ADMIN_IDS`  | ID админов через запятую          |
+| `DB_PATH`    | `/data/shop.db`                   |
 
-```text
-https://botets-production.up.railway.app/oauth/youtube/callback
-```
+### 4. Подключение Volume (для сохранения БД)
+1. В проекте Railway нажмите **+ New** → **Volume**.
+2. Mount path укажите: `/data`
+3. Привяжите Volume к сервису бота.
+4. Убедитесь, что `DB_PATH=/data/shop.db`.
 
-to Authorized redirect URIs. Enable YouTube Data API v3. Then open `/youtube` in the bot and connect the channel.
+### 5. Тип сервиса
+- В настройках сервиса выберите **Worker** (или просто используйте `Procfile` / `railway.json` — start command `python main.py`).
+- Бот работает через **long polling**, webhook не нужен.
 
-The bot defaults to `private` uploads. You can switch to `unlisted` or `public` in the YouTube menu.
+### 6. Деплой
+Railway автоматически соберёт и запустит бота. Смотрите логи в Dashboard.
 
-### YouTube download reliability
-The Docker image includes Node.js because current YouTube delivery can require a JavaScript runtime for player challenges. yt-dlp is configured to download only the selected quality, use one fragment at a time, and optionally use `credentials/cookies.txt` when provided. If YouTube changes its delivery, update `yt-dlp` before changing the rest of the bot.
+## Первые шаги после запуска
 
-Only download/re-upload videos you have permission to use.
+1. Напишите боту `/start`.
+2. Войдите в админку: `/admin`.
+3. **Настройки** → укажите адрес крипто-кошелька.
+4. **Категории** → создайте категорию → раздел → товар (с фото).
+5. Готово — магазин работает!
 
+## Принятые решения
 
-### Если появляется «срок действия состояния OAuth истёк»
-
-В этой версии OAuth state не хранится только в оперативной памяти процесса. Он подписывается сервером, поэтому перезапуск Railway между открытием Google и callback больше не ломает авторизацию. Срок действия state — 15 минут. Если страница Google была открыта дольше 15 минут, просто нажмите Connect YouTube ещё раз.
-
-### Настройка именно для этого Railway проекта
-
-Ваш Railway-домен: `botets-production.up.railway.app`
-
-`PUBLIC_BASE_URL`:
-```env
-PUBLIC_BASE_URL=https://botets-production.up.railway.app
-```
-
-Authorized redirect URI в Google Cloud должен быть **ровно**:
-```text
-https://botets-production.up.railway.app/oauth/youtube/callback
-```
-
-В Railway нельзя оставлять `YOUTUBE_CLIENT_SECRET=JSON_OT_Google_OAuth` или другой текст-заглушку. Нужно вставить содержимое файла `client_secret.json`, который скачан из Google Cloud, в переменную `YOUTUBE_CLIENT_SECRET_JSON`. Нужен OAuth client типа **Web application**.
-
-
-### Важно: redirect_uri_mismatch
-
-Для этого проекта callback должен быть ровно:
-`https://botets-production.up.railway.app/oauth/youtube/callback`
-
-В Railway задай `PUBLIC_BASE_URL=https://botets-production.up.railway.app`. Если у тебя уже есть `YOUTUBE_REDIRECT_URI` со старым адресом, удали эту переменную. В Google Cloud в Authorized redirect URIs оставь ровно тот же callback. Бот показывает фактический callback в меню `/youtube`.
+- Баланс **визуальный** (не реальные платежи) — пополнение через ручную проверку чека админом.
+- FSM-хранилище — `MemoryStorage` (при рестарте незавершённые диалоги сбрасываются; для production можно заменить на Redis).
+- Цены и баланс хранятся как `REAL` (float), отображаются без копеек.
+- При оформлении заказа остатки списываются сразу, баланс тоже.
+- Все проверки прав админа выполняются на сервере по `ADMIN_IDS`.
