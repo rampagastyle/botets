@@ -1,0 +1,5 @@
+aiogram>=3.0,<4
+python-dotenv>=1.0
+yt-dlp>=2025.1.0
+aiohttp
+google-genai>=1.40,<2
