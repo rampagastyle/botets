@@ -4,71 +4,114 @@ from aiogram.types import Message, ReplyKeyboardMarkup, KeyboardButton
 
 from config import is_admin
 from services.whitelist import is_allowed
-from services.i18n import t, lang
 
 router = Router()
-BOT_NAME = 'VideoProcessing'
-BOT_VERSION = 'v15'
-SUPPORT = '@classismfact'
+
+BOT_NAME = "VideoProcessing"
+BOT_VERSION = "v15"
+SUPPORT = "@classismfact"
 
 
-def main_kb(user_id=None):
-    uid = user_id or 0
+def main_kb(user_id: int | None = None):
     rows = [
-        [KeyboardButton(text=t(uid, 'menu_settings')), KeyboardButton(text=t(uid, 'menu_length'))],
-        [KeyboardButton(text=t(uid, 'menu_quality')), KeyboardButton(text=t(uid, 'menu_banner'))],
-        [KeyboardButton(text=t(uid, 'menu_watermark')), KeyboardButton(text=t(uid, 'menu_subtitles'))],
-        [KeyboardButton(text=t(uid, 'menu_mirror')), KeyboardButton(text=t(uid, 'menu_caption'))],
-        [KeyboardButton(text=t(uid, 'menu_all')), KeyboardButton(text=t(uid, 'menu_last'))],
-        [KeyboardButton(text=t(uid, 'menu_language')), KeyboardButton(text=t(uid, 'menu_youtube'))],
-        [KeyboardButton(text=t(uid, 'menu_about'))],
+        [KeyboardButton(text="⚙️ Настройки"), KeyboardButton(text="⏱ Длина")],
+        [KeyboardButton(text="🎬 Баннер"), KeyboardButton(text="🎞 Качество")],
+        [KeyboardButton(text="📦 Все части"), KeyboardButton(text="🔁 Последние")],
+        [KeyboardButton(text="ℹ️ О проекте"), KeyboardButton(text="❓ Help")],
     ]
     if user_id and is_admin(user_id):
-        rows.append([KeyboardButton(text='👥 Whitelist')])
+        rows.append([KeyboardButton(text="👥 Whitelist"), KeyboardButton(text="🛠 Баннеры")])
     return ReplyKeyboardMarkup(keyboard=rows, resize_keyboard=True)
 
 
-def denied_text(user_id):
-    return (f'━━━━━━━━━━━━━━━━━━━━\n🔒  <b>{BOT_NAME}</b> · {BOT_VERSION}\n'
-            f'━━━━━━━━━━━━━━━━━━━━\n\nДоступ только по whitelist.\n\n'
-            f'Ваш ID: <code>{user_id}</code>\n\nТехподдержка: {SUPPORT}\n━━━━━━━━━━━━━━━━━━━━')
-
-
-def about_text(user_id):
-    en = lang(user_id) == 'en'
-    if en:
-        return (
-            f'━━━━━━━━━━━━━━━━━━━━\n🎬 <b>{BOT_NAME}</b> · {BOT_VERSION}\n━━━━━━━━━━━━━━━━━━━━\n\n'
-            '<b>What it does</b>\nCuts long videos into vertical 9:16 clips, adds a soft blurred background, optional banner, watermark and subtitles.\n\n'
-            '<b>Low-load design</b>\n• one processing job at a time\n• FFmpeg uses one thread\n• source captions are preferred over local speech recognition\n• watermark and subtitles are burned during the same encode\n• temporary files are deleted as soon as possible\n• download quality is capped at 1080p\n\n'
-            '<b>Commands</b>\n/youtube — connect and auto-upload Shorts\n/gemini on|off — AI video analysis\n/quality 480|720|1080\n/clip 15|30|45|60\n/watermark text — set watermark\n/watermark off — remove watermark\n/subtitles off — disable\n/subtitles source — use source captions\n/subtitles ai — optional AI transcription via API\n/language ru|en — interface language\n/banner — banner instructions\n/mirror — mirror\n/caption text — Telegram caption\n/sendall — send all parts\n/last — resend last parts\n/cleanup — clean temporary files\n\nSupport: ' + SUPPORT + '\n━━━━━━━━━━━━━━━━━━━━'
-        )
+def denied_text(user_id: int) -> str:
     return (
-        f'━━━━━━━━━━━━━━━━━━━━\n🎬 <b>{BOT_NAME}</b> · {BOT_VERSION}\n━━━━━━━━━━━━━━━━━━━━\n\n'
-        '<b>Что делает</b>\nНарезает длинные ролики в вертикальные 9:16 клипы, добавляет мягкий blur-фон, баннер, водяной знак и субтитры.\n\n'
-        '<b>Система с низкой нагрузкой</b>\n• только одна обработка одновременно\n• FFmpeg использует один поток\n• сначала используются субтитры источника вместо локального распознавания\n• водяной знак и субтитры встраиваются в тот же encode\n• временные файлы удаляются сразу после этапа\n• скачивание ограничено 1080p\n\n'
-        '<b>Команды</b>\n/youtube — подключить YouTube и автозагрузку Shorts\n/gemini on|off — AI-анализ видео\n/quality 480|720|1080\n/clip 15|30|45|60\n/watermark текст — установить водяной знак\n/watermark off — убрать водяной знак\n/subtitles off — выключить\n/subtitles source — субтитры из источника\n/subtitles ai — опциональная AI-транскрипция через API\n/language ru|en — язык интерфейса\n/banner — инструкция по баннеру\n/mirror — зеркало\n/caption текст — подпись Telegram\n/sendall — отправлять все части\n/last — последние части\n/cleanup — очистка\n\nПоддержка: ' + SUPPORT + '\n━━━━━━━━━━━━━━━━━━━━'
+        f"<b>{BOT_NAME}</b>  ·  {BOT_VERSION}\n\n"
+        f"Доступ ограничен whitelist.\n\n"
+        f"Ваш ID: <code>{user_id}</code>\n\n"
+        f"Поддержка и доступ: {SUPPORT}"
     )
 
 
-@router.message(Command('start', 'help'))
+def about_text() -> str:
+    return (
+        f"<b>{BOT_NAME}</b>  ·  {BOT_VERSION}\n"
+        f"────────────────────\n\n"
+        f"Профессиональная нарезка длинных роликов "
+        f"в вертикальные клипы <b>9:16</b> с баннером и "
+        f"AI-описанием для Shorts / TikTok.\n\n"
+        f"<b>Как пользоваться</b>\n"
+        f"1. Выберите длину куска и качество\n"
+        f"2. Включите нужный баннер (если есть)\n"
+        f"3. Отправьте ссылку на видео\n"
+        f"4. Получите части + заголовок, описание, хештеги\n\n"
+        f"<b>Возможности</b>\n"
+        f"• RuTube, VK и другие источники\n"
+        f"• Размытый фон 9:16\n"
+        f"• Баннеры кампаний (общие для всех)\n"
+        f"• Gemini: title / description / хештеги YT и TikTok\n"
+        f"• Несколько пользователей одновременно\n\n"
+        f"Список команд — кнопка <b>❓ Help</b>\n\n"
+        f"Поддержка: {SUPPORT}"
+    )
+
+
+def help_text() -> str:
+    return (
+        f"<b>Команды · {BOT_NAME}</b>\n"
+        f"────────────────────\n\n"
+        f"/start — главное меню\n"
+        f"/help — эта справка\n"
+        f"/settings — настройки\n"
+        f"/clip 15|30|45|60 — длина куска\n"
+        f"/quality 480|720|1080 — качество\n"
+        f"/mirror — зеркало вкл/выкл\n"
+        f"/banner — выбрать баннер\n"
+        f"/sendall — слать все части сразу\n"
+        f"/last — последние части снова\n"
+        f"/cleanup — очистить временные файлы\n"
+        f"/myid — ваш Telegram ID\n\n"
+        f"<b>Админ</b>\n"
+        f"/createbanner — создать баннер\n"
+        f"/banners — список баннеров\n"
+        f"/delbanner ID — удалить баннер\n"
+        f"/whitelist · /allow · /deny\n\n"
+        f"Поддержка: {SUPPORT}"
+    )
+
+
+@router.message(Command("start"))
 async def start(message: Message):
-    uid = message.from_user.id
-    if not is_allowed(uid):
-        return await message.answer(denied_text(uid), parse_mode='HTML')
+    if not is_allowed(message.from_user.id):
+        return await message.answer(denied_text(message.from_user.id), parse_mode="HTML")
     await message.answer(
-        f'━━━━━━━━━━━━━━━━━━━━\n🎬 <b>{BOT_NAME}</b> · {BOT_VERSION}\n━━━━━━━━━━━━━━━━━━━━\n\n'
-        + ('Vertical clips · 9:16 · blur · up to 1080p' if lang(uid) == 'en' else 'Нарезка видео · 9:16 · blur-фон · до 1080p')
-        + '\n\n' + ('Send a video link or use the buttons below.' if lang(uid) == 'en' else 'Отправьте ссылку на видео или используйте кнопки ниже.')
-        + '\n━━━━━━━━━━━━━━━━━━━━',
-        parse_mode='HTML', reply_markup=main_kb(uid)
+        f"<b>{BOT_NAME}</b>  ·  {BOT_VERSION}\n"
+        f"────────────────────\n\n"
+        f"Отправьте <b>ссылку</b> на видео.\n"
+        f"Бот нарежет, оформит 9:16 и подготовит "
+        f"тексты для Shorts и TikTok.\n\n"
+        f"Поддержка: {SUPPORT}",
+        parse_mode="HTML",
+        reply_markup=main_kb(message.from_user.id),
     )
 
 
-@router.message(Command('about', 'info', 'project'))
-@router.message(F.text.in_({'ℹ️ О проекте', 'ℹ️ About'}))
+@router.message(Command("help"))
+@router.message(F.text == "❓ Help")
+async def help_cmd(message: Message):
+    if not is_allowed(message.from_user.id):
+        return await message.answer(denied_text(message.from_user.id), parse_mode="HTML")
+    await message.answer(help_text(), parse_mode="HTML")
+
+
+@router.message(Command("about", "info"))
+@router.message(F.text == "ℹ️ О проекте")
 async def about_cmd(message: Message):
-    uid = message.from_user.id
-    if not is_allowed(uid):
-        return await message.answer(denied_text(uid), parse_mode='HTML')
-    await message.answer(about_text(uid), parse_mode='HTML', disable_web_page_preview=True)
+    if not is_allowed(message.from_user.id):
+        return await message.answer(denied_text(message.from_user.id), parse_mode="HTML")
+    await message.answer(about_text(), parse_mode="HTML", disable_web_page_preview=True)
+
+
+@router.message(Command("myid"))
+async def myid_cmd(message: Message):
+    await message.answer(f"Ваш ID: <code>{message.from_user.id}</code>", parse_mode="HTML")

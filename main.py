@@ -1,56 +1,60 @@
-"""
-Точка входа Telegram-бота магазина домашнего мармелада.
-Запуск: long polling.
-"""
-
 import asyncio
 import logging
-import sys
+import os
+from pathlib import Path
 
 from aiogram import Bot, Dispatcher
-from aiogram.client.default import DefaultBotProperties
-from aiogram.enums import ParseMode
+from aiogram.client.session.aiohttp import AiohttpSession
 from aiogram.fsm.storage.memory import MemoryStorage
 
-from config import BOT_TOKEN, DB_PATH
-import database as db
-from handlers import user, admin, balance
+from config import BOT_TOKEN, BANNERS_DIR
+from handlers.start import router as start_router
+from handlers.settings import router as settings_router
+from handlers.video import router as video_router
+from handlers.upload import router as upload_router
+from handlers.admin import router as admin_router
+from handlers.banners_admin import router as banners_admin_router
+from services.storage import ensure_storage
 
-# Настройка логирования
+
+def ensure_runtime_files():
+    Path("logs").mkdir(exist_ok=True)
+    Path("data").mkdir(exist_ok=True)
+    BANNERS_DIR.mkdir(parents=True, exist_ok=True)
+    cred = Path("credentials")
+    cred.mkdir(exist_ok=True)
+    cookies_env = os.getenv("YTDLP_COOKIES")
+    if cookies_env:
+        (cred / "cookies.txt").write_text(cookies_env, encoding="utf-8")
+
+
 logging.basicConfig(
     level=logging.INFO,
-    format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
-    stream=sys.stdout,
+    format="%(asctime)s | %(levelname)s | %(name)s | %(message)s",
+    handlers=[
+        logging.FileHandler("logs/bot.log", encoding="utf-8"),
+        logging.StreamHandler(),
+    ],
 )
-logger = logging.getLogger(__name__)
 
 
-async def main() -> None:
-    # Инициализация БД
-    logger.info("Инициализация базы данных: %s", DB_PATH)
-    await db.init_db()
+async def main():
+    ensure_runtime_files()
+    if not BOT_TOKEN:
+        raise RuntimeError("BOT_TOKEN не задан")
+    ensure_storage()
 
-    bot = Bot(
-        token=BOT_TOKEN,
-        default=DefaultBotProperties(parse_mode=ParseMode.HTML),
-    )
+    session = AiohttpSession(timeout=600)
+    bot = Bot(BOT_TOKEN, session=session)
     dp = Dispatcher(storage=MemoryStorage())
-
-    # Подключаем роутеры
-    dp.include_router(user.router)
-    dp.include_router(balance.router)
-    dp.include_router(admin.router)
-
-    logger.info("Бот запускается (long polling)...")
-    try:
-        await dp.start_polling(bot, allowed_updates=dp.resolve_used_update_types())
-    finally:
-        await bot.session.close()
-        logger.info("Бот остановлен.")
+    dp.include_router(start_router)
+    dp.include_router(settings_router)
+    dp.include_router(banners_admin_router)
+    dp.include_router(admin_router)
+    dp.include_router(upload_router)
+    dp.include_router(video_router)
+    await dp.start_polling(bot)
 
 
 if __name__ == "__main__":
-    try:
-        asyncio.run(main())
-    except (KeyboardInterrupt, SystemExit):
-        logger.info("Выход по сигналу.")
+    asyncio.run(main())
